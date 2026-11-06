@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% load static ui %}
+{% block title %}{{ orden.numero }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ orden.numero }} <span class="badge text-bg-{{ orden.estado|badge }} fs-6 align-middle">{{ orden.get_estado_display }}</span></h1>
+    <div class="text-body-secondary">{{ orden.titulo }}</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if user.es_admin %}<a href="{% url 'orden_editar' orden.pk %}" class="btn btn-outline-secondary"><i class="bi bi-pencil"></i> Editar</a>{% endif %}
+    {% if informe %}<a href="{% url 'informe_detalle' informe.pk %}" class="btn btn-outline-info"><i class="bi bi-file-earmark-text"></i> Ver informe</a>{% endif %}
+    {% if puede_iniciar %}
+      <form method="post" action="{% url 'orden_iniciar' orden.pk %}" class="js-iniciar">{% csrf_token %}
+        <input type="hidden" name="lat"><input type="hidden" name="lng"><input type="hidden" name="precision">
+        <button class="btn btn-info"><i class="bi bi-play-fill"></i> {% if orden.estado == 'en_proceso' %}Continuar informe{% else %}Iniciar trabajo{% endif %}</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card mb-3"><div class="card-header">Datos de la orden</div><div class="card-body">
+      <dl class="row mb-0">
+        <dt class="col-sm-4">Cliente</dt><dd class="col-sm-8">{{ orden.cliente }}</dd>
+        <dt class="col-sm-4">Ubicación</dt><dd class="col-sm-8">{{ orden.ubicacion.nombre }}{% if orden.ubicacion.direccion %}<br><small class="text-body-secondary">{{ orden.ubicacion.direccion }}, {{ orden.ubicacion.ciudad }}</small>{% endif %}</dd>
+        <dt class="col-sm-4">Tipo</dt><dd class="col-sm-8">{{ orden.get_tipo_display }}</dd>
+        <dt class="col-sm-4">Prioridad</dt><dd class="col-sm-8">{{ orden.get_prioridad_display }}</dd>
+        <dt class="col-sm-4">Técnico</dt><dd class="col-sm-8">{{ orden.tecnico|default:"Sin asignar" }}</dd>
+        <dt class="col-sm-4">Fecha programada</dt><dd class="col-sm-8">{{ orden.fecha_programada|date:"d/m/Y" }}</dd>
+        {% if orden.fecha_inicio %}<dt class="col-sm-4">Inicio</dt><dd class="col-sm-8">{{ orden.fecha_inicio|date:"d/m/Y H:i" }}</dd>{% endif %}
+        {% if orden.fecha_termino %}<dt class="col-sm-4">Término</dt><dd class="col-sm-8">{{ orden.fecha_termino|date:"d/m/Y H:i" }}</dd>{% endif %}
+        {% if orden.descripcion %}<dt class="col-sm-4">Descripción</dt><dd class="col-sm-8">{{ orden.descripcion|linebreaksbr }}</dd>{% endif %}
+      </dl>
+    </div></div>
+
+    <div class="card"><div class="card-header">Equipos ({{ activos|length }})</div>
+      <ul class="list-group list-group-flush">
+        {% for a in activos %}
+          <li class="list-group-item d-flex justify-content-between">
+            <span>{{ a.codigo }} · {{ a.nombre }}<br><small class="text-body-secondary">{{ a.marca }} {{ a.modelo }}{% if a.capacidad_btu %} · {{ a.capacidad_btu }} BTU{% endif %}</small></span>
+            <span class="badge text-bg-{{ a.condicion|badge }} align-self-center">{{ a.get_condicion_display }}</span>
+          </li>
+        {% empty %}<li class="list-group-item text-body-secondary">Sin equipos asociados.</li>{% endfor %}
+      </ul></div>
+  </div>
+
+  {% if user.es_admin %}
+  <div class="col-lg-5"><div class="card"><div class="card-header">Finanzas</div><div class="card-body">
+    <table class="table table-sm mb-3">
+      <tr><td>Monto cobrado (neto)</td><td class="text-end">{{ orden.monto_neto|clp }}</td></tr>
+      <tr><td>Materiales</td><td class="text-end">{{ orden.costo_materiales|clp }}</td></tr>
+      <tr><td>Mano de obra</td><td class="text-end">{{ orden.costo_mano_obra|clp }}</td></tr>
+      <tr class="fw-bold"><td>Utilidad ({{ orden.margen }}%)</td><td class="text-end">{{ orden.utilidad|clp }}</td></tr>
+      <tr><td>IVA 19%</td><td class="text-end">{{ orden.iva|clp }}</td></tr>
+      <tr><td>Total con IVA</td><td class="text-end">{{ orden.total_con_iva|clp }}</td></tr>
+    </table>
+    <div class="d-flex justify-content-between align-items-center">
+      <span class="badge text-bg-{{ orden.estado_pago|badge }}">{{ orden.get_estado_pago_display }}</span>
+      <form method="post" action="{% url 'orden_pago' orden.pk %}">{% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <button class="btn btn-sm btn-outline-secondary">{% if orden.estado_pago == 'pagado' %}Marcar por cobrar{% else %}Marcar pagado{% endif %}</button>
+      </form>
+    </div>
+  </div></div></div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}{% if puede_iniciar %}<script src="{% static 'js/gps.js' %}"></script>{% endif %}{% endblock %}

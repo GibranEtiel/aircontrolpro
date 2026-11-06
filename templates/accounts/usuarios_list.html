@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% load ui %}
+{% block title %}Usuarios{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Usuarios y roles</h1>
+  <div class="d-flex gap-2">
+    {% include 'partials/exportar.html' %}
+    <a href="{% url 'usuario_nuevo' %}" class="btn btn-sm btn-info"><i class="bi bi-plus-lg"></i> Nuevo usuario</a>
+  </div>
+</div>
+<ul class="nav nav-pills mb-3">
+  <li class="nav-item"><a class="nav-link {% if not request.GET.rol %}active{% endif %}" href="?">Todos</a></li>
+  <li class="nav-item"><a class="nav-link {% if request.GET.rol == 'admin' %}active{% endif %}" href="?rol=admin">Administradores</a></li>
+  <li class="nav-item"><a class="nav-link {% if request.GET.rol == 'tecnico' %}active{% endif %}" href="?rol=tecnico">Técnicos</a></li>
+  <li class="nav-item"><a class="nav-link {% if request.GET.rol == 'cliente' %}active{% endif %}" href="?rol=cliente">Clientes</a></li>
+</ul>
+<div class="card"><div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Usuario</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Rol</th><th>Empresa</th><th>Estado</th><th></th></tr></thead>
+    <tbody>
+    {% for u in usuarios %}
+      <tr>
+        <td>{{ u.username }}</td><td>{{ u.nombre }}</td><td>{{ u.email|default:"—" }}</td><td>{{ u.telefono|default:"—" }}</td>
+        <td><span class="badge text-bg-secondary">{{ u.get_rol_display }}</span></td>
+        <td>{{ u.cliente|default:"—" }}</td>
+        <td>{% if u.is_active %}<span class="badge text-bg-success">Activo</span>{% else %}<span class="badge text-bg-secondary">Inactivo</span>{% endif %}</td>
+        <td class="text-end"><a href="{% url 'usuario_editar' u.pk %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a></td>
+      </tr>
+    {% empty %}<tr><td colspan="8" class="text-center text-body-secondary py-4">Sin usuarios.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

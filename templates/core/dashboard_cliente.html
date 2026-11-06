@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% load ui %}
+{% block title %}Inicio{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ cliente|default:"Mi cuenta" }}</h1>
+    <div class="text-body-secondary">Estado de tus equipos y mantenciones</div></div>
+</div>
+
+{% if not cliente %}
+  <div class="alert alert-warning">Tu usuario aún no está asociado a una empresa. Contacta a Air Control Pro.</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3"><div class="card kpi"><div class="card-body"><div class="valor">{{ equipos }}</div><div class="etiqueta">Equipos registrados</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card kpi verde"><div class="card-body"><div class="valor">{{ realizadas_anio }}</div><div class="etiqueta">Mantenciones realizadas este año</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card kpi ambar"><div class="card-body"><div class="valor">{{ proximas|length }}</div><div class="etiqueta">Próximas / en curso</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card kpi"><div class="card-body">
+    <div class="etiqueta mb-1">Condición de equipos</div>
+    {% for label, n in condiciones %}<span class="me-2 small">{{ label }}: <strong>{{ n }}</strong></span>{% endfor %}
+  </div></div></div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header">Próximas mantenciones</div>
+    <div class="list-group list-group-flush">
+      {% for o in proximas %}
+        <a class="list-group-item list-group-item-action d-flex justify-content-between" href="{% url 'orden_detalle' o.pk %}">
+          <span>{{ o.titulo }}<br><small class="text-body-secondary">{{ o.ubicacion.nombre }} · {{ o.fecha_programada|date:"d/m/Y" }}</small></span>
+          <span class="badge text-bg-{{ o.estado|badge }} align-self-center">{{ o.get_estado_display }}</span>
+        </a>
+      {% empty %}<div class="list-group-item text-body-secondary">No hay mantenciones programadas.</div>{% endfor %}
+    </div></div></div>
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header d-flex justify-content-between">Últimos informes <a href="{% url 'informes' %}" class="small fw-normal">Ver todos por mes</a></div>
+    <div class="list-group list-group-flush">
+      {% for i in ultimos_informes %}
+        <a class="list-group-item list-group-item-action d-flex justify-content-between" href="{% url 'informe_detalle' i.pk %}">
+          <span>{{ i.orden.titulo }}<br><small class="text-body-secondary">{{ i.numero }} · {{ i.orden.ubicacion.nombre }} · {{ i.fecha_referencia|date:"d/m/Y" }}</small></span>
+          <i class="bi bi-file-earmark-text align-self-center"></i>
+        </a>
+      {% empty %}<div class="list-group-item text-body-secondary">Aún no hay informes emitidos.</div>{% endfor %}
+    </div></div></div>
+</div>
+{% endblock %}

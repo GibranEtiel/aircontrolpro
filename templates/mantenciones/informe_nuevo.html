@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Nuevo informe{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Nuevo informe</h1>
+  <div class="text-body-secondary">Para un trabajo que no tiene orden asignada. Se crea la orden a tu nombre y el administrador la completa después.</div></div></div>
+
+<div class="card" style="max-width: 720px"><div class="card-body">
+  <form method="post" class="js-iniciar" novalidate>{% csrf_token %}
+    <input type="hidden" name="lat"><input type="hidden" name="lng"><input type="hidden" name="precision">
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="row g-3">
+      <div class="col-md-6"><label class="form-label">{{ form.cliente.label }}</label>{{ form.cliente }}{{ form.cliente.errors }}</div>
+      <div class="col-md-6"><label class="form-label">{{ form.ubicacion.label }}</label>{{ form.ubicacion }}{{ form.ubicacion.errors }}</div>
+      <div class="col-md-6"><label class="form-label">{{ form.tipo.label }}</label>{{ form.tipo }}</div>
+      <div class="col-md-6"><label class="form-label">{{ form.atencion.label }}</label>{{ form.atencion }}
+        <div class="form-text">{{ form.atencion.help_text }}</div></div>
+      <div class="col-12"><label class="form-label">{{ form.titulo.label }}</label>{{ form.titulo }}</div>
+    </div>
+    <div class="alert alert-secondary small mt-3 mb-3"><i class="bi bi-crosshair"></i> Al continuar el navegador te pedirá tu ubicación: queda registrada como el punto de inicio del trabajo.</div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-info"><i class="bi bi-play-fill"></i> Crear e iniciar informe</button>
+      <a href="{% url 'home' %}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+  </form>
+</div></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/gps.js' %}"></script>
+<script>
+// Solo se ofrecen las sucursales del cliente elegido.
+(function () {
+  var cliente = document.getElementById('id_cliente'), sucursal = document.getElementById('id_ubicacion');
+  var opciones = Array.prototype.slice.call(sucursal.options);
+  function filtrar(cambio) {
+    var visibles = 0;
+    opciones.forEach(function (o) {
+      var ok = !o.value || o.dataset.cliente === cliente.value;
+      o.hidden = o.disabled = !ok;
+      if (ok && o.value) visibles++;
+    });
+    if (cambio || sucursal.selectedOptions[0].disabled) {
+      var unica = opciones.filter(function (o) { return o.value && !o.disabled; });
+      sucursal.value = unica.length === 1 ? unica[0].value : '';
+    }
+  }
+  cliente.addEventListener('change', function () { filtrar(true); });
+  filtrar(false);
+})();
+</script>
+{% endblock %}

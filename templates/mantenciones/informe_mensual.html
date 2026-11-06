@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% load ui %}
+{% block title %}Informe mensual{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Informe general del mes</h1>
+    <div class="text-body-secondary">Todos los equipos intervenidos en el mes, en el formato del informe técnico.</div></div>
+  {% if equipos %}{% include 'partials/exportar.html' %}{% endif %}
+</div>
+
+<form method="get" class="card mb-3"><div class="card-body"><div class="row g-2 align-items-end">
+  {% if clientes %}
+  <div class="col-md-3"><label class="form-label small">Cliente</label>
+    <select name="cliente" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">Elige un cliente…</option>
+      {% for c in clientes %}<option value="{{ c.pk }}" {% if cliente and c.pk == cliente.pk %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}
+    </select></div>
+  {% endif %}
+  <div class="col-md-3"><label class="form-label small">Ubicación</label>
+    <select name="ubicacion" class="form-select form-select-sm">
+      <option value="">Todas</option>
+      {% for u in ubicaciones %}<option value="{{ u.pk }}" {% if u.pk|stringformat:"s" == ubicacion_id %}selected{% endif %}>{{ u.nombre }}</option>{% endfor %}
+    </select></div>
+  <div class="col-md-2"><label class="form-label small">Mes</label>
+    <input type="month" name="mes" value="{{ mes_valor }}" class="form-control form-control-sm"></div>
+  {% if user.es_admin %}
+  <div class="col-md-3"><div class="form-check small mb-2">
+    <input class="form-check-input" type="checkbox" name="borradores" value="1" id="borr" {% if borradores %}checked{% endif %}>
+    <label class="form-check-label" for="borr">Incluir equipos de informes aún sin enviar a revisión</label></div></div>
+  {% endif %}
+  <div class="col-md-1"><button class="btn btn-sm btn-info w-100">Ver</button></div>
+</div></div></form>
+
+{% if not cliente %}
+  <div class="alert alert-secondary">Elige un cliente para armar su informe del mes.</div>
+{% else %}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="card kpi"><div class="card-body"><div class="valor">{{ equipos|length }}</div><div class="etiqueta">Equipos intervenidos en {{ mes_nombre }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card kpi"><div class="card-body"><div class="valor">{{ resumen.ordenes }}</div><div class="etiqueta">Órdenes de trabajo</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card kpi rojo"><div class="card-body"><div class="valor">{{ resumen.fuera_norma }}</div><div class="etiqueta">Fuera de norma (R-22)</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card kpi verde"><div class="card-body"><div class="valor">{{ resumen.fotos }}</div><div class="etiqueta">Fotografías</div></div></div></div>
+  </div>
+  {% if sin_revisar > 0 %}
+    <div class="alert alert-warning">Hay {{ sin_revisar }} equipo(s) terminado(s) en informes que el técnico aún no envía a revisión; no están incluidos.</div>
+  {% endif %}
+  <div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Equipo</th><th>Marca / modelo</th><th>Ubicación exacta</th><th>Tipo</th><th>Observaciones</th><th>OT</th><th>Fecha</th><th>Informe</th><th></th></tr></thead>
+    <tbody>
+    {% for e in equipos %}
+      <tr>
+        <td><strong>{{ e.activo.numero_equipo|default:e.activo.codigo }}</strong></td>
+        <td>{{ e.activo.marca_modelo }}</td><td>{{ e.activo.ubicacion_exacta|default:"—" }}</td>
+        <td>{{ e.get_tipo_mantenimiento_display }}</td>
+        <td>{% if e.activo.fuera_de_norma %}<span class="badge text-bg-danger">R-22</span> {% endif %}{{ e.observaciones|default:"—"|truncatechars:60 }}</td>
+        <td>{{ e.informe.orden.numero }}</td><td>{{ e.fecha|date:"d/m/Y" }}</td>
+        <td><span class="badge text-bg-{{ e.informe.estado|badge }}">{{ e.informe.get_estado_display }}</span></td>
+        <td class="text-end"><a class="btn btn-sm btn-outline-danger" href="{% url 'equipo_pdf' e.pk %}" title="Ficha PDF"><i class="bi bi-file-earmark-pdf"></i></a></td>
+      </tr>
+    {% empty %}<tr><td colspan="9" class="text-center text-body-secondary py-4">No hay equipos terminados en {{ mes_nombre }}.</td></tr>{% endfor %}
+    </tbody>
+  </table></div></div>
+{% endif %}
+{% endblock %}

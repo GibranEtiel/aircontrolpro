@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+{% load ui %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Dashboard</h1>
+  <form method="get" class="d-flex gap-2">
+    <select name="anio" class="form-select form-select-sm" onchange="this.form.submit()">
+      {% for a in anios %}<option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+    <select name="cliente" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">Todos los clientes</option>
+      {% for c in clientes %}<option value="{{ c.pk }}" {% if c.pk|stringformat:"s" == cliente_id %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}
+    </select>
+    {% include 'partials/exportar.html' %}
+  </form>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-xl-3"><div class="card kpi verde"><div class="card-body d-flex justify-content-between">
+    <div><div class="valor">{{ kpis.ingresos|clp }}</div><div class="etiqueta">Ingresos netos {{ anio }}</div>
+      {% if kpis.ingresos_mes is not None %}<div class="small text-body-secondary">Este mes: {{ kpis.ingresos_mes|clp }}</div>{% endif %}</div>
+    <div class="icono"><i class="bi bi-graph-up-arrow"></i></div></div></div></div>
+  <div class="col-6 col-xl-3"><div class="card kpi rojo"><div class="card-body d-flex justify-content-between">
+    <div><div class="valor">{{ kpis.costos|clp }}</div><div class="etiqueta">Costos (materiales + mano de obra)</div></div>
+    <div class="icono"><i class="bi bi-wallet2"></i></div></div></div></div>
+  <div class="col-6 col-xl-3"><div class="card kpi"><div class="card-body d-flex justify-content-between">
+    <div><div class="valor">{{ kpis.utilidad|clp }}</div><div class="etiqueta">Utilidad · margen {{ kpis.margen }}%</div>
+      {% if kpis.utilidad_mes is not None %}<div class="small text-body-secondary">Este mes: {{ kpis.utilidad_mes|clp }}</div>{% endif %}</div>
+    <div class="icono"><i class="bi bi-piggy-bank"></i></div></div></div></div>
+  <div class="col-6 col-xl-3"><div class="card kpi ambar"><div class="card-body d-flex justify-content-between">
+    <div><div class="valor">{{ kpis.por_cobrar|clp }}</div><div class="etiqueta">Por cobrar · {{ kpis.por_cobrar_n }} OT</div>
+      <a class="small" href="{% url 'finanzas' %}?pago=pendiente">Ver detalle</a></div>
+    <div class="icono"><i class="bi bi-hourglass-split"></i></div></div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-8"><div class="card h-100">
+    <div class="card-header">Ingresos, costos y utilidad por mes</div>
+    <div class="card-body"><div class="chart-box"><canvas id="chMeses"></canvas></div></div></div></div>
+  <div class="col-lg-4"><div class="card h-100">
+    <div class="card-header">Órdenes por estado · cumplimiento {{ kpis.cumplimiento }}%</div>
+    <div class="card-body"><div class="chart-box"><canvas id="chEstados"></canvas></div></div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header">Ingresos por cliente</div>
+    <div class="card-body"><div class="chart-box"><canvas id="chClientes"></canvas></div></div></div></div>
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header">Tipo de trabajo</div>
+    <div class="card-body"><div class="chart-box"><canvas id="chTipos"></canvas></div></div></div></div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header">Rendimiento por técnico ({{ anio }})</div>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+      <thead><tr><th>Técnico</th><th class="text-end">OT</th><th class="text-end">Ingresos</th><th class="text-end">Utilidad</th></tr></thead>
+      <tbody>{% for t in por_tecnico %}
+        <tr><td>{{ t.nombre }}</td><td class="text-end">{{ t.n }}</td><td class="text-end">{{ t.ing|clp }}</td><td class="text-end">{{ t.utilidad|clp }}</td></tr>
+      {% empty %}<tr><td colspan="4" class="text-center text-body-secondary py-3">Sin órdenes finalizadas.</td></tr>{% endfor %}</tbody>
+    </table></div></div></div>
+  <div class="col-lg-6"><div class="card h-100">
+    <div class="card-header d-flex justify-content-between">Informes por revisar <span class="badge text-bg-warning">{{ en_revision|length }}</span></div>
+    <div class="list-group list-group-flush">
+      {% for i in en_revision %}
+        <a class="list-group-item list-group-item-action d-flex justify-content-between" href="{% url 'informe_detalle' i.pk %}">
+          <span>{{ i.orden.numero }} · {{ i.orden.cliente }}<br><small class="text-body-secondary">{{ i.tecnico }} · {{ i.termino|date:"d/m/Y H:i" }}</small></span>
+          <i class="bi bi-chevron-right align-self-center"></i>
+        </a>
+      {% empty %}<div class="list-group-item text-body-secondary">No hay informes pendientes de revisión.</div>{% endfor %}
+    </div></div></div>
+</div>
+
+{{ charts|json_script:"chartData" }}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+const d = JSON.parse(document.getElementById('chartData').textContent);
+const clp = v => '$' + Number(v).toLocaleString('es-CL');
+Chart.defaults.color = '#9fb0cc';
+Chart.defaults.borderColor = '#1f2b45';
+const colores = ['#22b8e8', '#25c26e', '#ffc107', '#ff6b7a', '#8e7cff', '#5f6e8c'];
+
+new Chart(document.getElementById('chMeses'), {
+  data: {
+    labels: d.meses,
+    datasets: [
+      {type: 'bar', label: 'Ingresos', data: d.ingresos, backgroundColor: '#22b8e8'},
+      {type: 'bar', label: 'Costos', data: d.costos, backgroundColor: '#ff6b7a'},
+      {type: 'line', label: 'Utilidad', data: d.utilidad, borderColor: '#25c26e', backgroundColor: '#25c26e', tension: .3},
+    ]
+  },
+  options: {maintainAspectRatio: false, scales: {y: {ticks: {callback: clp}}},
+            plugins: {tooltip: {callbacks: {label: c => `${c.dataset.label}: ${clp(c.parsed.y)}`}}}}
+});
+new Chart(document.getElementById('chEstados'), {
+  type: 'doughnut',
+  data: {labels: d.estados.labels, datasets: [{data: d.estados.data, backgroundColor: ['#6c757d', '#22b8e8', '#ffc107', '#25c26e', '#ff6b7a'], borderWidth: 0}]},
+  options: {maintainAspectRatio: false, cutout: '62%', plugins: {legend: {position: 'bottom'}}}
+});
+new Chart(document.getElementById('chClientes'), {
+  type: 'bar',
+  data: {labels: d.clientes.labels, datasets: [{label: 'Ingresos', data: d.clientes.data, backgroundColor: '#22b8e8'}]},
+  options: {indexAxis: 'y', maintainAspectRatio: false, plugins: {legend: {display: false},
+            tooltip: {callbacks: {label: c => clp(c.parsed.x)}}}, scales: {x: {ticks: {callback: clp}}}}
+});
+new Chart(document.getElementById('chTipos'), {
+  type: 'doughnut',
+  data: {labels: d.tipos.labels, datasets: [{data: d.tipos.data, backgroundColor: colores, borderWidth: 0}]},
+  options: {maintainAspectRatio: false, cutout: '62%', plugins: {legend: {position: 'bottom'}}}
+});
+</script>
+{% endblock %}

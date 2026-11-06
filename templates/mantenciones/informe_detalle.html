@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+{% load l10n ui static %}
+{% block title %}{{ informe.numero }}{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <div><h1>{{ informe.numero }} <span class="badge text-bg-{{ informe.estado|badge }} fs-6 align-middle">{{ informe.get_estado_display }}</span></h1>
+    <div class="small text-body-secondary">Última edición: {{ informe.actualizado_en|date:"d/m/Y H:i" }}</div></div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ orden.get_absolute_url }}" class="btn btn-outline-secondary">Orden {{ orden.numero }}</a>
+    {% if puede_editar %}<a href="{% url 'informe_editar' informe.pk %}" class="btn btn-outline-secondary"><i class="bi bi-pencil"></i> Editar</a>{% endif %}
+    {% if puede_emitir %}
+      <form method="post" action="{% url 'informe_devolver' informe.pk %}">{% csrf_token %}<button class="btn btn-outline-warning">Devolver al técnico</button></form>
+      <form method="post" action="{% url 'informe_emitir' informe.pk %}">{% csrf_token %}<button class="btn btn-success"><i class="bi bi-send-check"></i> Aprobar y emitir al cliente</button></form>
+    {% endif %}
+    <div class="dropdown">
+      <button class="btn btn-info dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-download"></i> Exportar</button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><a class="dropdown-item" href="{% url 'informe_pdf' informe.pk %}"><i class="bi bi-file-earmark-pdf text-danger"></i> Informe PDF (todos los equipos)</a></li>
+        <li><a class="dropdown-item" href="{% url 'informe_excel' informe.pk %}"><i class="bi bi-file-earmark-excel text-success"></i> Excel</a></li>
+        <li><button class="dropdown-item" onclick="window.print()"><i class="bi bi-printer"></i> Imprimir esta página</button></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<article class="hoja">
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <img src="{% static 'img/logo.png' %}" alt="Air Control Pro Climatización" style="height:70px">
+    <div class="small">N° DE OTS: {{ orden.numero }}</div>
+  </div>
+  <div class="text-center fs-5 mb-3" style="font-weight:300">AIRCONTROLPRO CLIMATIZACION</div>
+  <div class="border p-2 mb-3 small d-flex justify-content-between flex-wrap gap-2" style="min-height:3.2rem">
+    <span><strong>GENERO</strong>: {% if informe.emitido_por %}{{ informe.emitido_por }}{% else %}—{% endif %}</span>
+    <span><strong>RESPONSABLE TECNICO</strong>: {{ informe.tecnico|default:"—" }}</span>
+  </div>
+  <h2 class="h6 text-center fw-bold my-4">INFORME TÉCNICO DE MANTENIMIENTO DE AIRE ACONDICIONADO</h2>
+  <div class="mb-4">
+    <div>Fecha: {{ informe.inicio|date:"j \d\e F \d\e Y"|upper }}</div>
+    <div>Cliente: {{ orden.cliente }}</div>
+    <div>A.t: {{ orden.atencion|default:orden.cliente.contacto|default:"—" }}</div>
+    <div>Ubicación: {{ orden.ubicacion.nombre }}</div>
+    {% if informe.tiene_ubicacion %}
+    <div class="no-print small text-body-secondary">
+      {% localize off %}<a href="https://www.google.com/maps?q={{ informe.latitud_inicio }},{{ informe.longitud_inicio }}" target="_blank" rel="noopener"><i class="bi bi-geo-alt-fill"></i> Ubicación del técnico al iniciar</a>{% endlocalize %}
+      {% if informe.precision_inicio %}(±{{ informe.precision_inicio }} m){% endif %}
+    </div>{% endif %}
+  </div>
+
+  {% if informe.diagnostico or informe.trabajos_realizados %}
+  <div class="mb-4">
+    {% if informe.diagnostico %}<p class="mb-1"><strong>Diagnóstico / hallazgos:</strong> {{ informe.diagnostico|linebreaksbr }}</p>{% endif %}
+    {% if informe.trabajos_realizados %}<p class="mb-1"><strong>Trabajos realizados:</strong> {{ informe.trabajos_realizados|linebreaksbr }}</p>{% endif %}
+  </div>{% endif %}
+
+  {% for eq in equipos %}
+  <section class="equipo-bloque border-top pt-3 mt-3">
+    <div class="d-flex justify-content-between align-items-center">
+      <h3 class="h5 fw-bold mb-2">{{ eq.activo.etiqueta }}</h3>
+      {% if eq.finalizado %}<a class="no-print btn btn-sm btn-outline-danger" href="{% url 'equipo_pdf' eq.pk %}"><i class="bi bi-file-earmark-pdf"></i> Ficha PDF</a>
+      {% else %}<span class="no-print badge text-bg-warning">Sin terminar</span>{% endif %}
+    </div>
+    <ul class="list-unstyled mb-3">
+      <li><i class="cuadrito"></i>Marca / Modelo: {{ eq.activo.marca_modelo }}</li>
+      <li><i class="cuadrito"></i>Ubicación exacta: {{ eq.activo.ubicacion_exacta|default:"-" }}</li>
+      <li><i class="cuadrito"></i>Tipo de mantenimiento: {{ eq.get_tipo_mantenimiento_display }}</li>
+      <li><i class="cuadrito"></i>Actividades realizadas:
+        <ul class="list-unstyled ps-4 mb-0">{% for t in eq.tareas_labels %}<li>- {{ t }}</li>{% endfor %}</ul></li>
+      <li><i class="cuadrito"></i>Observaciones:
+        {% if eq.activo.fuera_de_norma %}<span style="color:#d00000">EQUIPO FUERA DE NORMA (REFRIGERANTE R-22)</span>{% if eq.observaciones %}, {{ eq.observaciones }}{% endif %}
+        {% else %}{{ eq.observaciones|default:"SIN OBS" }}{% endif %}</li>
+    </ul>
+    <p class="mb-1">Fotografías del equipo:</p>
+    {% if eq.fotos.all %}
+    <div class="fotos-hoja mb-3">
+      {% for f in eq.fotos.all %}<a href="{{ f.imagen.url }}" target="_blank"><img src="{{ f.imagen.url }}" alt="Foto del equipo" loading="lazy"></a>{% endfor %}
+    </div>
+    {% else %}<p class="text-body-secondary">Sin fotografías.</p>{% endif %}
+    <table class="tabla-medidas mb-0">
+      <tr><td>Presión de funcionamiento</td><td>{{ eq.presion|default_if_none:"-" }}{% if eq.presion is not None %} PSI{% endif %}</td></tr>
+      <tr><td>Consumo eléctrico total</td><td>{{ eq.consumo_total|default_if_none:"-" }}{% if eq.consumo_total is not None %} A{% endif %}</td></tr>
+      <tr><td>Consumo ventilador</td><td>{{ eq.consumo_ventilador|default_if_none:"-" }}{% if eq.consumo_ventilador is not None %} A{% endif %}</td></tr>
+      <tr><td>Temperatura de inyección ({{ eq.get_modo_display|upper }})</td><td>{{ eq.temp_inyeccion|default_if_none:"-" }}{% if eq.temp_inyeccion is not None %}°C{% endif %}</td></tr>
+    </table>
+  </section>
+  {% empty %}<p class="text-body-secondary">Sin equipos registrados.</p>{% endfor %}
+
+  {% if fotos_generales %}
+  <h3 class="h6 text-uppercase mt-4">Registro fotográfico general</h3>
+  <div class="foto-grid mb-3">{% for f in fotos_generales %}
+    <a class="foto" href="{{ f.imagen.url }}" target="_blank"><img src="{{ f.imagen.url }}" alt="Foto general" loading="lazy"></a>{% endfor %}</div>
+  {% endif %}
+
+  {% if informe.recomendaciones %}<h3 class="h6 text-uppercase mt-4">Recomendaciones</h3><p>{{ informe.recomendaciones|linebreaksbr }}</p>{% endif %}
+
+  <div class="row mt-5 pt-3">
+    <div class="col-6 text-center">
+      <div style="height:90px" class="d-flex align-items-end justify-content-center">{% if informe.firma %}<img src="{{ informe.firma.url }}" alt="Firma cliente" style="max-height:90px">{% endif %}</div>
+      <div class="border-top pt-1 small">Recibe conforme{% if informe.recibido_por %}: {{ informe.recibido_por }}{% endif %}</div>
+    </div>
+    <div class="col-6 text-center">
+      <div style="height:90px"></div>
+      <div class="border-top pt-1 small">Técnico: {{ informe.tecnico|default:"—" }}</div>
+    </div>
+  </div>
+</article>
+{% endblock %}

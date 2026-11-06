@@ -1,0 +1,7 @@
+<div class="dropdown no-print">
+  <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-download"></i> Exportar</button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><a class="dropdown-item" href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}export=pdf"><i class="bi bi-file-earmark-pdf text-danger"></i> PDF</a></li>
+    <li><a class="dropdown-item" href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}export=xlsx"><i class="bi bi-file-earmark-excel text-success"></i> Excel</a></li>
+  </ul>
+</div>

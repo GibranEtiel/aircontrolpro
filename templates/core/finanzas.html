@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% load ui %}
+{% block title %}Finanzas{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Finanzas</h1>
+  <form method="get" class="d-flex gap-2">
+    <select name="anio" class="form-select form-select-sm" onchange="this.form.submit()">
+      {% for a in anios %}<option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+    <select name="pago" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">Todos los pagos</option>
+      {% for v, l in pagos %}<option value="{{ v }}" {% if v == pago %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select>
+    {% include 'partials/exportar.html' %}
+  </form>
+</div>
+<p class="text-body-secondary">Órdenes finalizadas. Montos netos en CLP; el IVA se calcula al 19%.</p>
+<div class="card"><div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead><tr>
+      <th>OT</th><th>Cliente</th><th>Fecha</th><th class="text-end">Neto</th><th class="text-end">Costos</th>
+      <th class="text-end">Utilidad</th><th class="text-end">IVA</th><th class="text-end">Total</th><th>Pago</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for o in ordenes %}
+      <tr>
+        <td><a href="{{ o.get_absolute_url }}">{{ o.numero }}</a><br><small class="text-body-secondary">{{ o.titulo|truncatechars:40 }}</small></td>
+        <td>{{ o.cliente }}</td><td>{{ o.fecha_programada|date:"d/m/Y" }}</td>
+        <td class="text-end">{{ o.monto_neto|clp }}</td><td class="text-end">{{ o.costo_total|clp }}</td>
+        <td class="text-end {% if o.utilidad < 0 %}text-danger{% endif %}">{{ o.utilidad|clp }} <small class="text-body-secondary">({{ o.margen }}%)</small></td>
+        <td class="text-end">{{ o.iva|clp }}</td><td class="text-end">{{ o.total_con_iva|clp }}</td>
+        <td><span class="badge text-bg-{{ o.estado_pago|badge }}">{{ o.get_estado_pago_display }}</span>
+          {% if o.fecha_pago %}<br><small class="text-body-secondary">{{ o.fecha_pago|date:"d/m/Y" }}</small>{% endif %}</td>
+        <td class="text-end">
+          <form method="post" action="{% url 'orden_pago' o.pk %}">{% csrf_token %}
+            <button class="btn btn-sm btn-outline-secondary">{% if o.estado_pago == 'pagado' %}Marcar por cobrar{% else %}Marcar pagado{% endif %}</button>
+          </form>
+        </td>
+      </tr>
+    {% empty %}<tr><td colspan="10" class="text-center text-body-secondary py-4">Sin órdenes finalizadas.</td></tr>{% endfor %}
+    </tbody>
+    {% if ordenes %}
+    <tfoot><tr class="fw-bold">
+      <td colspan="3">Totales</td><td class="text-end">{{ totales.neto|clp }}</td><td class="text-end">{{ totales.costos|clp }}</td>
+      <td class="text-end">{{ totales.utilidad|clp }}</td><td class="text-end">{{ totales.iva|clp }}</td><td class="text-end">{{ totales.total|clp }}</td><td colspan="2"></td>
+    </tr></tfoot>
+    {% endif %}
+  </table>
+</div></div>
+{% endblock %}

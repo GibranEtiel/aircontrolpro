@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% load static ui %}
+{% block title %}Mi jornada{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Hola, {{ user.first_name|default:user.username }}</h1>
+    <div class="text-body-secondary">{{ hoy|date:"l j \d\e F" }}</div></div>
+  <a href="{% url 'informe_nuevo' %}" class="btn btn-info"><i class="bi bi-plus-circle"></i> Nuevo informe</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-4"><div class="card kpi"><div class="card-body"><div class="valor">{{ en_proceso|length }}</div><div class="etiqueta">En proceso</div></div></div></div>
+  <div class="col-4"><div class="card kpi ambar"><div class="card-body"><div class="valor">{{ en_revision }}</div><div class="etiqueta">En revisión</div></div></div></div>
+  <div class="col-4"><div class="card kpi verde"><div class="card-body"><div class="valor">{{ finalizadas_mes }}</div><div class="etiqueta">Finalizadas este mes</div></div></div></div>
+</div>
+
+{% if en_proceso %}
+<h2 class="h5 mb-3">Trabajos en curso</h2>
+<div class="row g-3 mb-4">
+  {% for o in en_proceso %}
+  <div class="col-md-6"><div class="card border-info"><div class="card-body">
+    <div class="d-flex justify-content-between"><strong>{{ o.numero }}</strong><span class="badge text-bg-info">En proceso</span></div>
+    <div>{{ o.titulo }}</div>
+    <div class="text-body-secondary small mb-3"><i class="bi bi-geo-alt"></i> {{ o.cliente }} · {{ o.ubicacion.nombre }}</div>
+    <form method="post" action="{% url 'orden_iniciar' o.pk %}" class="js-iniciar">{% csrf_token %}
+      <input type="hidden" name="lat"><input type="hidden" name="lng"><input type="hidden" name="precision">
+      <button class="btn btn-info w-100"><i class="bi bi-pencil-square"></i> Continuar informe</button>
+    </form>
+  </div></div></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="h5 mb-3">Órdenes por iniciar</h2>
+<div class="row g-3">
+  {% for o in pendientes %}
+  <div class="col-md-6"><div class="card"><div class="card-body">
+    <div class="d-flex justify-content-between"><strong>{{ o.numero }}</strong>
+      <span class="text-body-secondary small">{{ o.fecha_programada|date:"d/m/Y" }}</span></div>
+    <div>{{ o.titulo }}</div>
+    <div class="text-body-secondary small">{{ o.get_tipo_display }} · {{ o.activos.count }} equipo(s)</div>
+    <div class="text-body-secondary small mb-3"><i class="bi bi-geo-alt"></i> {{ o.cliente }} · {{ o.ubicacion.nombre }}{% if o.ubicacion.direccion %} · {{ o.ubicacion.direccion }}{% endif %}</div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{% url 'orden_detalle' o.pk %}">Detalle</a>
+      <form method="post" action="{% url 'orden_iniciar' o.pk %}" class="js-iniciar flex-grow-1">{% csrf_token %}
+        <input type="hidden" name="lat"><input type="hidden" name="lng"><input type="hidden" name="precision">
+        <button class="btn btn-info w-100"><i class="bi bi-play-fill"></i> Iniciar trabajo</button>
+      </form>
+    </div>
+  </div></div></div>
+  {% empty %}
+  <div class="col-12"><div class="card"><div class="card-body text-body-secondary">No tienes órdenes pendientes.</div></div></div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/gps.js' %}"></script>
+{% endblock %}

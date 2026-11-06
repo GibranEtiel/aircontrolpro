@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ titulo }}</h1></div>
+<form method="post" novalidate>{% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+  <div class="card mb-3"><div class="card-header">Orden</div><div class="card-body"><div class="row g-3">
+    <div class="col-md-3"><label class="form-label">{{ form.numero.label }}</label>{{ form.numero }}{{ form.numero.errors }}
+      <div class="form-text">{{ form.numero.help_text }}</div></div>
+    <div class="col-md-9"><label class="form-label">{{ form.titulo.label }}</label>{{ form.titulo }}{{ form.titulo.errors }}</div>
+    <div class="col-12"><label class="form-label">{{ form.atencion.label }}</label>{{ form.atencion }}
+      <div class="form-text">{{ form.atencion.help_text }} Si lo dejas vacío se usa el contacto del cliente.</div></div>
+    <div class="col-md-4"><label class="form-label">{{ form.tipo.label }}</label>{{ form.tipo }}</div>
+    <div class="col-md-4"><label class="form-label">{{ form.prioridad.label }}</label>{{ form.prioridad }}</div>
+    <div class="col-md-4"><label class="form-label">{{ form.estado.label }}</label>{{ form.estado }}</div>
+    <div class="col-md-6"><label class="form-label">{{ form.ubicacion.label }}</label>{{ form.ubicacion }}{{ form.ubicacion.errors }}</div>
+    <div class="col-md-3"><label class="form-label">{{ form.tecnico.label }}</label>{{ form.tecnico }}</div>
+    <div class="col-md-3"><label class="form-label">{{ form.fecha_programada.label }}</label>{{ form.fecha_programada }}{{ form.fecha_programada.errors }}</div>
+    <div class="col-12">
+      <label class="form-label">Equipos a intervenir</label>
+      <div id="activos-box" class="border rounded p-2" style="max-height: 220px; overflow:auto">
+        {% for op in form.activos %}<div class="form-check js-activo">{{ op.tag }}<label class="form-check-label" for="{{ op.id_for_label }}">{{ op.choice_label }}</label></div>{% endfor %}
+        <div class="text-body-secondary small" id="activos-vacio" hidden>Esta ubicación no tiene equipos registrados.</div>
+      </div>
+      {{ form.activos.errors }}
+    </div>
+    <div class="col-12"><label class="form-label">{{ form.descripcion.label }}</label>{{ form.descripcion }}</div>
+  </div></div></div>
+
+  <div class="card mb-3"><div class="card-header">Finanzas (CLP, valores netos)</div><div class="card-body"><div class="row g-3">
+    <div class="col-md-3"><label class="form-label">{{ form.monto_neto.label }}</label>{{ form.monto_neto }}</div>
+    <div class="col-md-3"><label class="form-label">{{ form.costo_materiales.label }}</label>{{ form.costo_materiales }}</div>
+    <div class="col-md-3"><label class="form-label">{{ form.costo_mano_obra.label }}</label>{{ form.costo_mano_obra }}</div>
+    <div class="col-md-3"><label class="form-label">{{ form.estado_pago.label }}</label>{{ form.estado_pago }}</div>
+    <div class="col-md-3"><label class="form-label">{{ form.fecha_pago.label }}</label>{{ form.fecha_pago }}</div>
+  </div></div></div>
+
+  <button class="btn btn-info">Guardar</button>
+  <a href="{% url 'ordenes' %}" class="btn btn-outline-secondary">Cancelar</a>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Muestra solo los equipos de la ubicación elegida.
+(function () {
+  var sel = document.getElementById('id_ubicacion');
+  var items = document.querySelectorAll('.js-activo');
+  var vacio = document.getElementById('activos-vacio');
+  // Se muestran los de la sucursal elegida y los que ya están marcados (equipos de otra sucursal
+  // del mismo cliente agregados desde el informe). Al cambiar de sucursal se desmarcan los ajenos.
+  function filtrar(desmarcar) {
+    var visibles = 0;
+    items.forEach(function (div) {
+      var chk = div.querySelector('input');
+      var propio = chk.dataset.ubicacion === sel.value;
+      if (!propio && desmarcar === true) chk.checked = false;
+      div.hidden = !propio && !chk.checked;
+      if (!div.hidden) visibles++;
+    });
+    vacio.hidden = !sel.value || visibles > 0;
+  }
+  sel.addEventListener('change', function () { filtrar(true); });
+  filtrar(false);
+})();
+</script>
+{% endblock %}

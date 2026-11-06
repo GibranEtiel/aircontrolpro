@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+{% load static ui %}
+{% block title %}Informe {{ informe.numero }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Informe {{ informe.numero }}</h1>
+    <div class="text-body-secondary">{{ orden.numero }} · {{ orden.titulo }}<br>
+      <i class="bi bi-geo-alt"></i> {{ orden.cliente }} · {{ orden.ubicacion.nombre }}</div>
+  </div>
+  <span id="gps-estado" class="badge text-bg-secondary gps-pill"><i class="bi bi-crosshair"></i> Buscando ubicación…</span>
+</div>
+
+<form method="post" id="informe-form" novalidate data-foto-url="{% url 'foto_subir' informe.pk %}">{% csrf_token %}
+  <input type="hidden" name="lat_fin"><input type="hidden" name="lng_fin">
+  <input type="hidden" name="firma_data" id="firma_data">
+  {# Enter dentro de un campo guarda; sin esto dispararía el primer botón (Terminar equipo) #}
+  <button name="accion" value="guardar" hidden tabindex="-1" aria-hidden="true"></button>
+
+  {% if not es_borrador %}
+  <div class="alert alert-info"><i class="bi bi-pencil-square"></i> Estás editando un informe
+    {% if informe.estado == 'emitido' %}ya emitido al cliente: los cambios se verán de inmediato en su PDF y en su portal.
+    {% else %}que está en revisión.{% endif %}</div>
+  {% endif %}
+
+  {% if form.errors %}<div class="alert alert-danger">Revisa los campos marcados en rojo.</div>{% endif %}
+
+  <h2 class="h5 mb-1">Equipos intervenidos</h2>
+  <p class="text-body-secondary small">Termina cada equipo apenas lo intervengas: su ficha en PDF queda disponible al instante.</p>
+  {% for eq, f in bloques %}
+  <div class="card equipo-card mb-3 {% if eq.finalizado %}border-success{% endif %}" id="eq-{{ eq.pk }}" data-equipo="{{ eq.pk }}">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span>{{ eq.activo.etiqueta }} · {{ eq.activo.marca_modelo }}</span>
+      {% if eq.finalizado %}<span class="badge text-bg-success"><i class="bi bi-check-circle"></i> Terminado</span>{% endif %}
+    </div>
+    <div class="card-body">
+      <div class="small text-body-secondary mb-3">
+        <i class="bi bi-pin-map"></i> {{ eq.activo.ubicacion_exacta|default:"Sin ubicación exacta" }}
+        {% if eq.activo.fuera_de_norma %}<span class="badge text-bg-danger ms-2">Fuera de norma (R-22)</span>{% endif %}
+      </div>
+      <div class="row g-3">
+        <div class="col-md-6"><label class="form-label">{{ f.tipo_mantenimiento.label }}</label>{{ f.tipo_mantenimiento }}</div>
+        <div class="col-md-6"><label class="form-label">Estado del equipo</label>{{ f.estado_equipo }}</div>
+        <div class="col-12 tareas"><label class="form-label">Actividades realizadas</label>
+          <div class="row row-cols-1 row-cols-md-2 g-1">
+          {% for c in f.tareas %}<div class="col"><div class="form-check">{{ c.tag }}<label class="form-check-label" for="{{ c.id_for_label }}">{{ c.choice_label }}</label></div></div>{% endfor %}
+          </div>
+        </div>
+        <div class="col-12"><label class="form-label">Observaciones</label>{{ f.observaciones }}
+          <div class="form-text">{% if eq.activo.fuera_de_norma %}Se agrega sola la nota «EQUIPO FUERA DE NORMA (REFRIGERANTE R-22)». {% endif %}Si no escribes nada saldrá «SIN OBS».</div></div>
+
+        <div class="col-6 col-md-3"><label class="form-label small">{{ f.presion.label }}</label>{{ f.presion }}{{ f.presion.errors }}</div>
+        <div class="col-6 col-md-3"><label class="form-label small">{{ f.consumo_total.label }}</label>{{ f.consumo_total }}{{ f.consumo_total.errors }}</div>
+        <div class="col-6 col-md-3"><label class="form-label small">{{ f.consumo_ventilador.label }}</label>{{ f.consumo_ventilador }}{{ f.consumo_ventilador.errors }}</div>
+        <div class="col-6 col-md-3"><label class="form-label small">{{ f.temp_inyeccion.label }}</label>
+          <div class="input-group">{{ f.temp_inyeccion }}{{ f.modo }}</div>{{ f.temp_inyeccion.errors }}</div>
+
+        <div class="col-12">
+          <label class="form-label">Fotos del equipo <span class="text-body-secondary small">(sube las que quieras: antes, durante y después)</span></label>
+          <div class="d-flex gap-2 mb-2">
+            <select class="form-select form-select-sm js-etapa" style="max-width:140px">
+              {% for v, l in etapas %}<option value="{{ v }}" {% if v == 'otro' %}selected{% endif %}>{{ l }}</option>{% endfor %}
+            </select>
+            <label class="btn btn-sm btn-outline-info mb-0"><i class="bi bi-camera"></i> Tomar / subir foto
+              <input type="file" accept="image/*" capture="environment" class="js-foto" data-equipo="{{ eq.pk }}" hidden multiple>
+            </label>
+          </div>
+          <div class="foto-grid js-fotos">
+            {% for foto in eq.fotos.all %}
+              <div class="foto" data-id="{{ foto.pk }}"><a href="{{ foto.imagen.url }}" target="_blank"><img src="{{ foto.imagen.url }}" alt=""></a>
+                <span class="etapa">{{ foto.get_etapa_display }}</span>
+                <button type="button" class="quitar" data-url="{% url 'foto_eliminar' foto.pk %}" aria-label="Quitar foto">&times;</button></div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-12 d-flex gap-2 flex-wrap">
+          <button name="accion" value="terminar_{{ eq.pk }}" class="btn btn-success flex-grow-1"><i class="bi bi-check2-circle"></i> {% if eq.finalizado %}Guardar cambios del equipo{% else %}Terminar equipo{% endif %}</button>
+          {% if eq.finalizado %}<a class="btn btn-outline-danger" href="{% url 'equipo_pdf' eq.pk %}"><i class="bi bi-file-earmark-pdf"></i> Ficha PDF</a>{% endif %}
+          <button name="accion" value="quitar_{{ eq.pk }}" class="btn btn-outline-secondary js-quitar-equipo" title="Quitar este equipo del informe"><i class="bi bi-trash"></i></button>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div class="alert alert-secondary">Esta orden no tiene equipos asociados. Puedes documentar el trabajo con las fotos y comentarios generales.</div>
+  {% endfor %}
+
+  <div class="card mb-3 border-info" id="agregar-equipos">
+    <div class="card-header"><i class="bi bi-plus-circle"></i> Agregar equipos de {{ orden.cliente }}</div>
+    <div class="card-body">
+      <p class="small text-body-secondary mb-2">Un informe puede incluir varios equipos de la empresa. Marca los que intervino el técnico y agrégalos.</p>
+      {% if disponibles %}
+      <input type="search" id="buscar-equipo" class="form-control form-control-sm mb-2" placeholder="Buscar por N°, marca, modelo o ubicación…" autocomplete="off">
+      <div class="border rounded p-2 mb-2" style="max-height:240px; overflow:auto" id="lista-equipos">
+        {% for a in disponibles %}
+        <div class="form-check js-equipo-disp">
+          <input class="form-check-input" type="checkbox" name="agregar_activos" value="{{ a.pk }}" id="disp{{ a.pk }}">
+          <label class="form-check-label" for="disp{{ a.pk }}">
+            <strong>{{ a.numero_equipo|default:a.codigo }}</strong> · {{ a.marca_modelo }}
+            <span class="text-body-secondary small">· {{ a.ubicacion_exacta|default:"sin ubicación exacta" }} · {{ a.ubicacion.nombre }}</span>
+            {% if a.fuera_de_norma %}<span class="badge text-bg-danger">R-22</span>{% endif %}
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+      <button name="accion" value="agregar" class="btn btn-sm btn-info"><i class="bi bi-plus-lg"></i> Agregar seleccionados</button>
+      {% else %}
+      <div class="text-body-secondary small">Todos los equipos registrados de este cliente ya están en el informe.</div>
+      {% endif %}
+
+      <hr>
+      <a class="small" data-bs-toggle="collapse" href="#equipo-nuevo" role="button" id="nuevo-equipo">¿El equipo no está en la lista? Crear equipo nuevo</a>
+      <div class="collapse mt-3" id="equipo-nuevo">
+        <div class="row g-2">
+          <div class="col-6 col-md-2"><label class="form-label small">{{ nuevo_form.numero_equipo.label }}</label>{{ nuevo_form.numero_equipo }}</div>
+          <div class="col-6 col-md-3"><label class="form-label small">{{ nuevo_form.marca.label }}</label>{{ nuevo_form.marca }}</div>
+          <div class="col-6 col-md-3"><label class="form-label small">{{ nuevo_form.modelo.label }}</label>{{ nuevo_form.modelo }}</div>
+          <div class="col-6 col-md-2"><label class="form-label small">{{ nuevo_form.refrigerante.label }}</label>{{ nuevo_form.refrigerante }}</div>
+          <div class="col-md-6"><label class="form-label small">{{ nuevo_form.ubicacion_exacta.label }}</label>{{ nuevo_form.ubicacion_exacta }}</div>
+          <div class="col-md-6"><label class="form-label small">{{ nuevo_form.ubicacion.label }}</label>{{ nuevo_form.ubicacion }}</div>
+        </div>
+        <button name="accion" value="nuevo" class="btn btn-sm btn-outline-info mt-2" formnovalidate><i class="bi bi-plus-lg"></i> Crear y agregar al informe</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3"><div class="card-header">Fotos generales del trabajo</div><div class="card-body">
+    <div class="d-flex gap-2 mb-2">
+      <select class="form-select form-select-sm js-etapa" style="max-width:140px">
+        {% for v, l in etapas %}<option value="{{ v }}" {% if v == 'otro' %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+      <label class="btn btn-sm btn-outline-info mb-0"><i class="bi bi-camera"></i> Tomar / subir foto
+        <input type="file" accept="image/*" capture="environment" class="js-foto" data-equipo="" hidden multiple></label>
+    </div>
+    <div class="foto-grid js-fotos">
+      {% for foto in fotos_generales %}
+        <div class="foto" data-id="{{ foto.pk }}"><a href="{{ foto.imagen.url }}" target="_blank"><img src="{{ foto.imagen.url }}" alt=""></a>
+          <span class="etapa">{{ foto.get_etapa_display }}</span>
+          <button type="button" class="quitar" data-url="{% url 'foto_eliminar' foto.pk %}" aria-label="Quitar foto">&times;</button></div>
+      {% endfor %}
+    </div>
+  </div></div>
+
+  <div class="card mb-3"><div class="card-header">Resumen del trabajo</div><div class="card-body"><div class="row g-3">
+    <div class="col-12"><label class="form-label">{{ form.diagnostico.label }}</label>{{ form.diagnostico }}</div>
+    <div class="col-12"><label class="form-label">{{ form.trabajos_realizados.label }}</label>{{ form.trabajos_realizados }}</div>
+    <div class="col-12"><label class="form-label">{{ form.recomendaciones.label }}</label>{{ form.recomendaciones }}</div>
+  </div></div></div>
+
+  <div class="card mb-3"><div class="card-header">Recepción del cliente</div><div class="card-body"><div class="row g-3">
+    <div class="col-md-6"><label class="form-label">{{ form.recibido_por.label }}</label>{{ form.recibido_por }}</div>
+    <div class="col-12">
+      <label class="form-label">Firma</label>
+      <canvas id="firma" class="firma-canvas"></canvas>
+      <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="firma-limpiar">Limpiar firma</button>
+      {% if informe.firma %}<span class="small text-body-secondary ms-2">Ya hay una firma guardada; dibuja otra solo si quieres reemplazarla.</span>{% endif %}
+    </div>
+  </div></div></div>
+
+  <div class="sticky-actions d-flex gap-2">
+    {% if es_borrador %}
+      <button name="accion" value="guardar" class="btn btn-outline-info flex-fill">Guardar borrador</button>
+      <button name="accion" value="enviar" id="btn-enviar" class="btn btn-info flex-fill"><i class="bi bi-send"></i> Enviar a revisión</button>
+    {% else %}
+      <a href="{% url 'informe_detalle' informe.pk %}" class="btn btn-outline-secondary flex-fill">Volver al informe</a>
+      <button name="accion" value="guardar" class="btn btn-info flex-fill"><i class="bi bi-save"></i> Guardar cambios</button>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}<script src="{% static 'js/informe.js' %}"></script>{% endblock %}
