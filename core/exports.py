@@ -27,7 +27,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 EMPRESA = 'Air Control Pro'
-AZUL = colors.HexColor('#0b6f99')
+AZUL = colors.HexColor('#075f91')
 GRIS = colors.HexColor('#f1f4f9')
 
 # fmt: 'txt' | 'clp' | 'num' | 'fecha' | 'fechahora' | 'pct'
@@ -116,7 +116,7 @@ def excel_response(nombre, hojas):
     """hojas: [{'nombre', 'titulo', 'subtitulo', 'columnas': [Col], 'filas': [[..]], 'totales': [..]}]"""
     libro = Workbook()
     libro.remove(libro.active)
-    relleno = PatternFill('solid', fgColor='0B6F99')
+    relleno = PatternFill('solid', fgColor='075F91')
     for hoja in hojas:
         ws = libro.create_sheet(hoja['nombre'][:31])
         columnas = hoja['columnas']

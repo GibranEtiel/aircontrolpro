@@ -1,0 +1,10 @@
+{# Equipos que el técnico debe intervenir en una orden: N° de equipo, dónde está y marca/modelo. #}
+<div class="small fw-bold text-body-secondary mb-1"><i class="bi bi-fan"></i> Equipos a intervenir ({{ orden.activos.all|length }})</div>
+<div>
+  {% for a in orden.activos.all %}
+    <span class="chip-equipo {% if a.fuera_de_norma %}norma{% endif %}" title="{{ a.marca_modelo }}{% if a.fuera_de_norma %} · R-22 fuera de norma{% endif %}">
+      <b>{% if a.numero_equipo %}N°{{ a.numero_equipo }}{% else %}{{ a.codigo }}{% endif %}</b>
+      {% if a.ubicacion_exacta %}{{ a.ubicacion_exacta }}{% else %}{{ a.nombre }}{% endif %}
+    </span>
+  {% empty %}<span class="text-body-secondary small">Sin equipos asignados: agrégalos desde el informe.</span>{% endfor %}
+</div>

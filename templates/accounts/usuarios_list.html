@@ -16,7 +16,7 @@
   <li class="nav-item"><a class="nav-link {% if request.GET.rol == 'cliente' %}active{% endif %}" href="?rol=cliente">Clientes</a></li>
 </ul>
 <div class="card"><div class="table-responsive">
-  <table class="table table-hover align-middle mb-0">
+  <table class="table table-hover align-middle mb-0 tabla-movil">
     <thead><tr><th>Usuario</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Rol</th><th>Empresa</th><th>Estado</th><th></th></tr></thead>
     <tbody>
     {% for u in usuarios %}

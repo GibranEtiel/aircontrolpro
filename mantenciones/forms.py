@@ -139,6 +139,7 @@ class InformeEquipoForm(BootstrapFormMixin, forms.ModelForm):
 
     class Meta:
         model = InformeEquipo
-        fields = ['tipo_mantenimiento', 'tareas', 'observaciones', 'presion', 'consumo_total',
+        fields = ['tipo_mantenimiento', 'tareas', 'observaciones', 'fuera_de_norma', 'presion', 'consumo_total',
                   'consumo_ventilador', 'temp_inyeccion', 'modo', 'estado_equipo']
-        widgets = {'observaciones': forms.Textarea(attrs={'rows': 2})}
+        widgets = {'observaciones': forms.Textarea(attrs={'rows': 2}),
+                   'fuera_de_norma': forms.CheckboxInput(attrs={'role': 'switch'})}

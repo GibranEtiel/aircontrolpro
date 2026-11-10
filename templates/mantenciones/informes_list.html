@@ -27,7 +27,7 @@
       </button>
     </h2>
     <div id="m{{ forloop.counter }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}">
-      <div class="table-responsive"><table class="table table-hover align-middle mb-0">
+      <div class="table-responsive"><table class="table table-hover align-middle mb-0 tabla-movil">
         <thead><tr><th>Informe</th><th>Trabajo</th>{% if not user.es_cliente %}<th>Cliente</th>{% endif %}<th>Ubicación</th><th>Fecha</th>{% if not user.es_cliente %}<th>Estado</th>{% endif %}<th></th></tr></thead>
         <tbody>
         {% for i in informes %}

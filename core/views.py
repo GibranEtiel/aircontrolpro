@@ -1,12 +1,17 @@
+from django.contrib.auth.views import redirect_to_login
 from django.db.models import Count, F, Sum
 from django.db.models.functions import TruncMonth
+from django.http import Http404
 from django.shortcuts import render
 from django.utils import timezone
+from django.views.static import serve
 
 from accounts.models import User
 from catalogo.models import Activo, Cliente
-from mantenciones.models import Informe, OrdenTrabajo
+from cotizaciones.models import Cotizacion
+from mantenciones.models import FotoInforme, Informe, InformeEquipo, OrdenTrabajo
 
+from . import dashboard
 from .exports import (ANCHO_VERTICAL, Col, excel_response, exportar_tabla, formato_export, grafico_barras,
                       pdf_response, tabla, texto, titulo)
 from .permissions import informes_visibles, ordenes_visibles, rol_required
@@ -106,11 +111,37 @@ def _dashboard_admin(request):
         'en_revision': Informe.objects.filter(estado=Informe.Estado.ENVIADO)
                        .select_related('orden', 'orden__cliente', 'tecnico')[:8],
         'equipos_total': Activo.objects.filter(estado=Activo.Estado.ACTIVO).count(),
+        'cot_por_llamar': list(Cotizacion.objects.por_llamar().select_related('cliente')
+                               .prefetch_related('items').order_by('fecha')[:10]),
+        'cot_pendientes': [(c.neto) for c in Cotizacion.objects.pendientes().prefetch_related('items')],
     }
+    contexto['cot_pendientes_n'] = len(contexto['cot_pendientes'])
+    contexto['cot_pendientes_monto'] = sum(contexto['cot_pendientes'], 0)
     formato = formato_export(request)
     if formato:
         return _exportar_dashboard(formato, contexto)
+    hora = timezone.localtime().hour
+    contexto.update(
+        datos=dashboard.payload(anio, cliente_id, hoy), hoy=hoy,
+        saludo='Buenos días' if hora < 12 else 'Buenas tardes' if hora < 20 else 'Buenas noches',
+        n_por_iniciar=OrdenTrabajo.objects.filter(estado=Estado.PENDIENTE).count(),
+        n_por_revisar=Informe.objects.filter(estado=Informe.Estado.ENVIADO).count(),
+        n_por_llamar=Cotizacion.objects.por_llamar().count(),
+    )
     return render(request, 'core/dashboard_admin.html', contexto)
+
+
+@rol_required(User.Rol.ADMIN)
+def dashboard_datos(request):
+    """JSON del dashboard para un año y cliente: lo usa la página para actualizarse sin recargar."""
+    from django.http import JsonResponse
+
+    hoy = timezone.localdate()
+    try:
+        anio = int(request.GET.get('anio', hoy.year))
+    except ValueError:
+        anio = hoy.year
+    return JsonResponse(dashboard.payload(anio, request.GET.get('cliente', ''), hoy))
 
 
 def _exportar_dashboard(formato, ctx):
@@ -151,7 +182,7 @@ def _exportar_dashboard(formato, ctx):
         titulo('Resumen'),
         tabla([Col('Indicador'), Col('Valor')], [list(r) for r in resumen], ancho),
         titulo('Ingresos, costos y utilidad por mes'),
-        grafico_barras(MESES, [('Ingresos', charts['ingresos'], '#22b8e8'), ('Costos', charts['costos'], '#ff6b7a')],
+        grafico_barras(MESES, [('Ingresos', charts['ingresos'], '#0881c5'), ('Costos', charts['costos'], '#f6410f')],
                        ancho),
         tabla(cols_mes, mensual, ancho, mensual_tot),
         titulo('Ingresos por cliente'),
@@ -166,10 +197,19 @@ def _exportar_dashboard(formato, ctx):
 
 def _dashboard_tecnico(request):
     hoy = timezone.localdate()
-    mias = ordenes_visibles(request.user)
+    mias = ordenes_visibles(request.user).prefetch_related('activos')
+    # Equipos ya terminados a los que les faltan fotos del procedimiento: se pueden completar mientras el informe
+    # no esté emitido.
+    terminados = (InformeEquipo.objects.filter(
+        informe__tecnico=request.user, finalizado=True,
+        informe__estado__in=[Informe.Estado.BORRADOR, Informe.Estado.ENVIADO])
+        .select_related('activo', 'informe', 'informe__orden', 'informe__orden__cliente')
+        .prefetch_related('fotos').order_by('-completado_en'))
+    fotos_pendientes = [e for e in terminados if e.pasos_pendientes]
     return render(request, 'core/dashboard_tecnico.html', {
+        'fotos_pendientes': fotos_pendientes,
         'en_proceso': mias.filter(estado=Estado.EN_PROCESO),
-        'pendientes': mias.filter(estado=Estado.PENDIENTE).order_by('fecha_programada'),
+        'pendientes': mias.filter(estado=Estado.PENDIENTE).order_by('fecha_programada', 'numero'),
         'en_revision': mias.filter(estado=Estado.EN_REVISION).count(),
         'finalizadas_mes': mias.filter(estado=Estado.FINALIZADA, fecha_programada__year=hoy.year,
                                        fecha_programada__month=hoy.month).count(),
@@ -234,3 +274,24 @@ def finanzas(request):
         'ordenes': ordenes, 'totales': totales, 'anio': anio, 'anios': _anios_disponibles(),
         'pago': pago, 'pagos': OrdenTrabajo.Pago.choices,
     })
+
+
+def media_protegida(request, path):
+    """Sirve fotos y firmas solo a quien puede ver el informe al que pertenecen.
+
+    El administrador ve todo; el técnico, sus informes; el cliente, los informes emitidos de su empresa.
+    """
+    from django.conf import settings
+
+    user = request.user
+    if not user.is_authenticated:
+        return redirect_to_login(request.get_full_path())
+    if not user.es_admin:
+        visibles = informes_visibles(user).values('pk')
+        permitido = (FotoInforme.objects.filter(imagen=path, informe__in=visibles).exists()
+                     or Informe.objects.filter(firma=path, pk__in=visibles).exists())
+        if not permitido:
+            raise Http404
+    respuesta = serve(request, path, document_root=settings.MEDIA_ROOT)
+    respuesta['Cache-Control'] = 'private, max-age=3600'
+    return respuesta

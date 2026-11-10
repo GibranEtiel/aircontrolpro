@@ -1,0 +1,53 @@
+/* Tablero de cotizaciones (arrastrar y soltar) */
+.tablero { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+.kcol { background: rgba(255, 255, 255, .55); border: 1px solid var(--acp-line); border-radius: 1.4rem; padding: .8rem; transition: background .2s, box-shadow .2s, border-color .2s; }
+.kcol-cab { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .15rem .35rem .75rem; }
+.kcol-titulo { display: inline-flex; align-items: center; gap: .5rem; font-weight: 800; color: var(--acp-deep); letter-spacing: -.02em; }
+.kpunto { width: .65rem; height: .65rem; border-radius: 50%; background: #f0a500; box-shadow: 0 0 0 4px rgba(240, 165, 0, .2); }
+.kcol-aceptada .kpunto { background: #12905a; box-shadow: 0 0 0 4px rgba(18, 144, 90, .2); }
+.kcol-rechazada .kpunto { background: var(--acp-red); box-shadow: 0 0 0 4px rgba(246, 65, 15, .2); }
+.kcol-n { background: var(--acp-deep); color: #fff; font-size: .72rem; font-weight: 800; border-radius: 999px; padding: .05rem .5rem; min-width: 1.5rem; text-align: center; }
+.kcol-monto { font-weight: 800; font-size: .85rem; color: var(--acp-muted); font-variant-numeric: tabular-nums; }
+
+.kcol-lista { display: grid; gap: .65rem; min-height: 7rem; align-content: start; padding: .15rem; border-radius: 1rem; transition: background .2s, outline-color .2s; outline: 2px dashed transparent; outline-offset: 2px; }
+.kcol.sobre { background: var(--acp-mist); border-color: var(--acp-blue); box-shadow: 0 0 0 3px rgba(8, 129, 197, .15); }
+.kcol.sobre .kcol-lista { outline-color: rgba(8, 129, 197, .45); }
+.kcol-vacio { display: none; place-items: center; text-align: center; color: var(--acp-muted); font-size: .82rem; border: 2px dashed var(--acp-line); border-radius: 1rem; padding: 1.6rem .5rem; }
+.kcol-lista:not(:has(.kcard)) .kcol-vacio { display: grid; }
+
+.kcard {
+  position: relative; background: #fff; border: 1px solid var(--acp-line); border-radius: 1.1rem; padding: .8rem .9rem;
+  box-shadow: var(--acp-shadow-sm); cursor: grab; transition: transform .18s, box-shadow .18s, opacity .18s;
+  animation: kentrar .35s cubic-bezier(.2, .7, .2, 1) both;
+}
+@keyframes kentrar { from { opacity: 0; transform: scale(.96) translateY(6px); } to { opacity: 1; transform: none; } }
+.kcard:hover { transform: translateY(-3px); box-shadow: var(--acp-shadow); }
+.kcard:active { cursor: grabbing; }
+.kcard.arrastrando { opacity: .45; transform: rotate(1.5deg) scale(.98); box-shadow: none; }
+.kcard.urgente { border-color: rgba(246, 65, 15, .45); box-shadow: 0 0 0 1px rgba(246, 65, 15, .2), var(--acp-shadow-sm); }
+.kcard.guardando { pointer-events: none; opacity: .6; }
+.kcard-top { display: flex; align-items: center; gap: .4rem; margin-bottom: .35rem; }
+.kcard-num { font-weight: 800; font-size: .82rem; letter-spacing: -.01em; }
+.kmenu { border: 0; background: transparent; width: 1.9rem; height: 1.9rem; border-radius: 50%; color: var(--acp-muted); display: grid; place-items: center; }
+.kmenu:hover { background: var(--acp-paper); color: var(--acp-deep); }
+.kcard-cliente { font-weight: 700; color: var(--acp-deep); font-size: .92rem; line-height: 1.25; }
+.kcard-titulo { color: var(--acp-muted); font-size: .82rem; margin-bottom: .55rem; }
+.kcard-pie { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px dashed var(--acp-line); padding-top: .5rem; }
+.kcard-pie b { font-size: 1.05rem; letter-spacing: -.03em; color: var(--acp-deep); }
+.kcard-pie small { color: var(--acp-muted); font-size: .74rem; }
+.kcard-tel { display: inline-flex; align-items: center; gap: .35rem; margin-top: .5rem; font-size: .78rem; font-weight: 700; }
+.kcard-extra:not(:empty) { margin-top: .6rem; }
+.kcard-extra .btn { width: 100%; }
+
+.ktoast {
+  position: fixed; left: 50%; bottom: 1.5rem; transform: translate(-50%, 1.5rem); z-index: 2000; opacity: 0; pointer-events: none;
+  background: var(--acp-deep); color: #fff; border-radius: 999px; padding: .7rem 1.2rem; font-weight: 600; font-size: .9rem;
+  box-shadow: var(--acp-shadow); transition: opacity .25s, transform .25s; max-width: calc(100vw - 2rem);
+}
+.ktoast.on { opacity: 1; transform: translate(-50%, 0); }
+.ktoast.error { background: #b02a06; }
+
+@media (max-width: 991.98px) {
+  .tablero { grid-template-columns: 1fr; }
+  .kcard { cursor: default; }
+}

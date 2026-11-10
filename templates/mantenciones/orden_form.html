@@ -2,6 +2,7 @@
 {% block title %}{{ titulo }}{% endblock %}
 {% block content %}
 <div class="page-head"><h1>{{ titulo }}</h1></div>
+{% if cotizacion %}<div class="alert alert-info"><i class="bi bi-receipt"></i> Orden generada desde la cotización <strong>{{ cotizacion.numero }}</strong> ({{ cotizacion.cliente }}). Elige la sucursal, los equipos a intervenir y el técnico.</div>{% endif %}
 <form method="post" novalidate>{% csrf_token %}
   {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
   <div class="card mb-3"><div class="card-header">Orden</div><div class="card-body"><div class="row g-3">

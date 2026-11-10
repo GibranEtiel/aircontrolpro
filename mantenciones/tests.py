@@ -1,5 +1,6 @@
 import shutil
 import tempfile
+from decimal import Decimal
 from io import BytesIO
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -80,11 +81,9 @@ class FlujoMantencionTests(TestCase):
         c = self.client
         c.force_login(self.tecnico)
 
-        r = c.post(reverse('orden_iniciar', args=[self.orden.pk]),
-                   {'lat': '-33.4489', 'lng': '-70.6693', 'precision': '12'})
+        r = c.post(reverse('orden_iniciar', args=[self.orden.pk]))
         informe = Informe.objects.get(orden=self.orden)
         self.assertRedirects(r, reverse('informe_editar', args=[informe.pk]))
-        self.assertEqual(str(informe.latitud_inicio), '-33.448900')
         self.orden.refresh_from_db()
         self.assertEqual(self.orden.estado, OrdenTrabajo.Estado.EN_PROCESO)
         self.assertEqual(informe.equipos.count(), 1)
@@ -106,11 +105,10 @@ class FlujoMantencionTests(TestCase):
 
         # Subir foto con coordenadas
         r = c.post(reverse('foto_subir', args=[informe.pk]),
-                   {'imagen': imagen_de_prueba(), 'etapa': 'antes', 'equipo': eq.pk, 'lat': '-33.4', 'lng': '-70.6'})
+                   {'imagen': imagen_de_prueba(), 'etapa': 'antes', 'equipo': eq.pk})
         self.assertEqual(r.status_code, 200, r.content)
         foto = FotoInforme.objects.get()
         self.assertEqual(foto.equipo, eq)
-        self.assertEqual(str(foto.latitud), '-33.400000')
         self.assertLessEqual(max(Image.open(foto.imagen).size), 1600)
 
         # Un archivo que no es imagen se rechaza
@@ -167,6 +165,174 @@ class FlujoMantencionTests(TestCase):
         self.assertEqual((informe.diagnostico, informe.estado), ('corregido', Informe.Estado.EMITIDO))
         self.assertContains(r, 'Cambios guardados')
 
+    # --- 6 fotos por equipo ----------------------------------------------------------
+
+    def _informe_iniciado(self):
+        c = self.client
+        c.force_login(self.tecnico)
+        c.post(reverse('orden_iniciar', args=[self.orden.pk]))
+        informe = Informe.objects.get(orden=self.orden)
+        c.get(reverse('informe_editar', args=[informe.pk]))  # al abrir el editor se crea la ficha de cada equipo
+        return informe, informe.equipos.get()
+
+    def _foto(self, informe, eq, paso):
+        return self.client.post(reverse('foto_subir', args=[informe.pk]),
+                                {'imagen': imagen_de_prueba(), 'equipo': eq.pk, 'paso': paso})
+
+    def test_las_seis_fotos_por_equipo_y_la_condensadora_es_opcional(self):
+        from .models import PASOS_FOTO
+
+        self.assertEqual([p[0] for p in PASOS_FOTO],
+                         ['liquido', 'hidrolavadora', 'soplador', 'desarmado', 'condensadora', 'terminado'])
+        self.assertEqual([p[0] for p in PASOS_FOTO if not p[2]], ['condensadora'])
+        informe, eq = self._informe_iniciado()
+        self.assertEqual(len(eq.pasos_pendientes), 5)  # todas menos la opcional
+        for paso in ('liquido', 'hidrolavadora', 'soplador', 'desarmado', 'terminado'):
+            r = self._foto(informe, eq, paso)
+            self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['faltan'], [])  # sin la condensadora ya está completo
+        eq = informe.equipos.prefetch_related('fotos').get()
+        self.assertEqual(eq.pasos_pendientes, [])
+        self.assertEqual(eq.fotos.count(), 5)
+
+    def test_volver_a_tomar_un_paso_reemplaza_la_foto(self):
+        informe, eq = self._informe_iniciado()
+        primera = self._foto(informe, eq, 'liquido').json()
+        segunda = self._foto(informe, eq, 'liquido').json()
+        self.assertNotEqual(primera['id'], segunda['id'])
+        self.assertEqual(FotoInforme.objects.filter(equipo=eq, paso='liquido').count(), 1)
+        self.assertEqual(segunda['titulo'], '1 · Aplicación del líquido')
+
+    def test_paso_invalido_o_sin_equipo_se_rechaza(self):
+        informe, eq = self._informe_iniciado()
+        self.assertEqual(self._foto(informe, eq, 'inventado').status_code, 400)
+        r = self.client.post(reverse('foto_subir', args=[informe.pk]), {'imagen': imagen_de_prueba(), 'paso': 'liquido'})
+        self.assertEqual(r.status_code, 400)
+
+    def test_se_puede_terminar_con_fotos_faltantes_y_agregarlas_despues(self):
+        informe, eq = self._informe_iniciado()
+        c = self.client
+        self._foto(informe, eq, 'liquido')
+        datos = {**self._base(informe), 'accion': f'terminar_{eq.pk}'}
+        r = c.post(reverse('informe_editar', args=[informe.pk]), datos, follow=True)
+        eq.refresh_from_db()
+        self.assertTrue(eq.finalizado)
+        self.assertContains(r, 'Faltan fotos')
+        self.assertContains(r, 'Lavado con hidrolavadora')
+
+        # El técnico ve el recordatorio en su jornada, con enlace directo al equipo
+        r = c.get(reverse('home'))
+        self.assertContains(r, 'Fotos pendientes')
+        self.assertContains(r, f'#eq-{eq.pk}')
+        self.assertEqual([e.pk for e in r.context['fotos_pendientes']], [eq.pk])
+
+        # Se envía a revisión igual (con aviso) y puede completarlas mientras está en revisión
+        c.post(reverse('informe_editar', args=[informe.pk]), {**self._base(informe), 'accion': 'enviar'}, follow=True)
+        informe.refresh_from_db()
+        self.assertEqual(informe.estado, Informe.Estado.ENVIADO)
+        for paso in ('hidrolavadora', 'soplador', 'desarmado', 'terminado'):
+            self.assertEqual(self._foto(informe, eq, paso).status_code, 200)
+        self.assertEqual(c.get(reverse('home')).context['fotos_pendientes'], [])
+
+    def test_el_administrador_ve_las_fotos_pendientes_en_el_informe(self):
+        informe, eq = self._informe_iniciado()
+        self.client.post(reverse('informe_editar', args=[informe.pk]),
+                         {**self._base(informe), 'accion': f'terminar_{eq.pk}'})  # sin fotos: no termina
+        self._foto(informe, eq, 'liquido')
+        self.client.post(reverse('informe_editar', args=[informe.pk]), {**self._base(informe), 'accion': f'terminar_{eq.pk}'})
+        self.client.force_login(self.admin)
+        r = self.client.get(reverse('informe_detalle', args=[informe.pk]))
+        self.assertContains(r, 'Fotos pendientes')
+        self.assertContains(r, '1 · Aplicación del líquido')  # la foto lleva su paso al pie
+        r = self.client.get(reverse('orden_detalle', args=[self.orden.pk]))
+        self.assertContains(r, 'Faltan 4 fotos')
+
+    def test_informe_individual_y_general_incluyen_los_pasos(self):
+        informe, eq = self._informe_iniciado()
+        for paso in ('liquido', 'hidrolavadora', 'soplador', 'desarmado', 'condensadora', 'terminado'):
+            self._foto(informe, eq, paso)
+        self.client.post(reverse('informe_editar', args=[informe.pk]),
+                         {**self._base(informe), 'accion': f'terminar_{eq.pk}'})
+        eq = informe.equipos.prefetch_related('fotos').get()
+        self.assertEqual([f.paso for f in eq.fotos_ordenadas],
+                         ['liquido', 'hidrolavadora', 'soplador', 'desarmado', 'condensadora', 'terminado'])
+        individual = self.client.get(reverse('equipo_pdf', args=[eq.pk]))
+        general = self.client.get(reverse('informe_pdf', args=[informe.pk]))
+        for r in (individual, general):
+            self.assertEqual(r.status_code, 200)
+            self.assertTrue(r.content.startswith(b'%PDF'))
+        self.assertGreater(len(general.content), 10000)  # 6 fotos con su pie
+        celdas = self._celdas(self.client.get(reverse('informe_excel', args=[informe.pk])))
+        self.assertIn('—', celdas)  # sin fotos pendientes
+        # La orden ofrece ambos informes
+        r = self.client.get(reverse('orden_detalle', args=[self.orden.pk]))
+        self.assertContains(r, reverse('informe_pdf', args=[informe.pk]))
+        self.assertContains(r, reverse('equipo_pdf', args=[eq.pk]))
+
+    # --- mediciones y observaciones opcionales ---------------------------------------------
+
+    def test_lo_que_el_tecnico_no_anota_no_sale_en_el_informe(self):
+        informe, eq = self._informe_iniciado()
+        self._foto(informe, eq, 'liquido')
+        self.client.post(reverse('informe_editar', args=[informe.pk]),
+                         {**self._base(informe), 'accion': f'terminar_{eq.pk}'})
+        eq = informe.equipos.select_related('activo').prefetch_related('fotos').get()
+        self.assertTrue(eq.finalizado)  # terminó sin ninguna medición ni observación
+        self.assertEqual((eq.mediciones, eq.observaciones_informe), ([], ('', '')))
+
+        self.client.force_login(self.admin)
+        html = self.client.get(reverse('informe_detalle', args=[informe.pk])).content.decode()
+        for ausente in ('SIN OBS', 'Presión de funcionamiento', 'Consumo eléctrico', 'Temperatura de inyección',
+                        'Observaciones:'):
+            self.assertNotIn(ausente, html)
+        for url in (reverse('equipo_pdf', args=[eq.pk]), reverse('informe_pdf', args=[informe.pk])):
+            self.assertTrue(self.client.get(url).content.startswith(b'%PDF'))
+
+    def test_solo_salen_las_mediciones_con_valor(self):
+        informe, eq = self._informe_iniciado()
+        eq.presion, eq.temp_inyeccion, eq.modo, eq.observaciones = Decimal('60'), Decimal('8.7'), 'calor', 'Filtro roto'
+        eq.save()
+        eq = informe.equipos.select_related('activo').prefetch_related('fotos').get()
+        self.assertEqual(eq.mediciones, [('Presión de funcionamiento', '60 PSI'),
+                                         ('Temperatura de inyección (CALOR)', '8.7°C')])
+        self.assertEqual(eq.observaciones_informe, ('', 'Filtro roto'))
+        eq.temp_inyeccion = None  # sin temperatura, el modo frío/calor tampoco aparece
+        self.assertEqual([n for n, _ in eq.mediciones], ['Presión de funcionamiento'])
+
+    # --- interruptor «equipo fuera de norma» -------------------------------------------------
+
+    def test_fuera_de_norma_parte_segun_el_refrigerante_y_el_tecnico_lo_decide(self):
+        self.equipo.refrigerante = 'R-22'
+        self.equipo.save()
+        informe, eq = self._informe_iniciado()
+        self.assertTrue(eq.fuera_de_norma)  # R-22: parte activado
+        self.assertEqual(eq.observaciones_informe[0], 'EQUIPO FUERA DE NORMA (REFRIGERANTE R-22)')
+        self.assertContains(self.client.get(reverse('informe_editar', args=[informe.pk])), 'role="switch"')
+
+        # El técnico lo apaga (el interruptor apagado no envía nada) y deja de salir en el informe
+        self.client.post(reverse('informe_editar', args=[informe.pk]), {**self._base(informe), 'accion': 'guardar'})
+        eq.refresh_from_db()
+        self.assertFalse(eq.fuera_de_norma)
+        self.assertEqual(eq.observaciones_informe, ('', ''))
+        self.client.force_login(self.admin)
+        self.assertNotContains(self.client.get(reverse('informe_detalle', args=[informe.pk])), 'FUERA DE NORMA')
+
+    def test_el_tecnico_puede_marcar_fuera_de_norma_un_equipo_que_no_es_r22(self):
+        self.equipo.refrigerante = 'R410A'
+        self.equipo.save()
+        informe, eq = self._informe_iniciado()
+        self.assertFalse(eq.fuera_de_norma)
+        self.client.post(reverse('informe_editar', args=[informe.pk]), {
+            **self._base(informe), f'eq{eq.pk}-fuera_de_norma': 'on', f'eq{eq.pk}-observaciones': 'Gas dañado',
+            'accion': 'guardar'})
+        eq = informe.equipos.select_related('activo').get()
+        self.assertTrue(eq.fuera_de_norma)
+        self.assertEqual(eq.observaciones_informe, ('EQUIPO FUERA DE NORMA', 'Gas dañado'))  # sin «R-22»
+        self.client.force_login(self.admin)
+        html = self.client.get(reverse('informe_detalle', args=[informe.pk])).content.decode()
+        self.assertIn('EQUIPO FUERA DE NORMA', html)
+        self.assertNotIn('REFRIGERANTE R-22', html)
+
     def _base(self, informe):
         """Datos mínimos de los equipos del informe, como los enviaría el navegador."""
         datos = {}
@@ -216,8 +382,7 @@ class FlujoMantencionTests(TestCase):
         pagina = c.get(reverse('informe_nuevo'))
         self.assertContains(pagina, 'Cliente B')
         antes = OrdenTrabajo.objects.count()
-        datos = {'cliente': self.cli_a.pk, 'ubicacion': self.ub_a.pk, 'tipo': 'correctivo', 'atencion': 'Nicolas',
-                 'lat': '-33.45', 'lng': '-70.66', 'precision': '8'}
+        datos = {'cliente': self.cli_a.pk, 'ubicacion': self.ub_a.pk, 'tipo': 'correctivo', 'atencion': 'Nicolas'}
 
         # Una sucursal de otro cliente se rechaza
         r = c.post(reverse('informe_nuevo'), {**datos, 'ubicacion': self.ub_b.pk})
@@ -231,8 +396,7 @@ class FlujoMantencionTests(TestCase):
         self.assertEqual((orden.tecnico, orden.estado, orden.creada_por, orden.cliente, orden.atencion),
                          (self.tecnico, OrdenTrabajo.Estado.EN_PROCESO, self.tecnico, self.cli_a, 'Nicolas'))
         self.assertIn('correctiva', orden.titulo)
-        self.assertEqual((str(informe.latitud_inicio), informe.precision_inicio, informe.tecnico),
-                         ('-33.450000', 8, self.tecnico))
+        self.assertEqual(informe.tecnico, self.tecnico)
         # Puede agregar los equipos del cliente dentro del informe recién creado
         self.assertContains(c.get(reverse('informe_editar', args=[informe.pk])), 'Agregar equipos de Cliente A')
 
@@ -295,7 +459,7 @@ class FlujoMantencionTests(TestCase):
 
     def test_exportaciones_pdf_y_excel(self):
         informe = Informe.objects.create(orden=self.orden, tecnico=self.tecnico, estado=Informe.Estado.EMITIDO,
-                                         diagnostico='Filtros sucios', latitud_inicio='-33.4', longitud_inicio='-70.6')
+                                         diagnostico='Filtros sucios')
         eq = informe.equipos.create(activo=self.equipo, tareas=['filtros'], presion='60', finalizado=True,
                                     completado_en=timezone.now())
         foto = FotoInforme(informe=informe, equipo=eq, imagen=imagen_de_prueba(), etapa='antes')
@@ -345,7 +509,7 @@ class FlujoMantencionTests(TestCase):
         self.equipo.refrigerante, self.equipo.numero_equipo = 'R-22', '020'
         self.equipo.save()
         informe = Informe.objects.create(orden=self.orden, tecnico=self.tecnico, estado=Informe.Estado.ENVIADO)
-        eq = informe.equipos.create(activo=self.equipo, tareas=TAREAS_CLAVES, finalizado=True,
+        eq = informe.equipos.create(activo=self.equipo, tareas=TAREAS_CLAVES, finalizado=True, fuera_de_norma=True,
                                     completado_en=timezone.now(), observaciones='Cambio de tarjeta')
         FotoInforme(informe=informe, equipo=eq, imagen=imagen_de_prueba()).save()
         mes = timezone.localdate().strftime('%Y-%m')

@@ -1,26 +1,7 @@
-// Edición del informe técnico desde el celular: GPS, fotos y firma.
+// Edición del informe técnico desde el celular: fotos y firma.
 (function () {
   var form = document.getElementById('informe-form');
   var csrf = form.querySelector('[name=csrfmiddlewaretoken]').value;
-  var pill = document.getElementById('gps-estado');
-  var posicion = null;
-
-  // --- Ubicación ---------------------------------------------------------
-  function pintarGps(clase, texto) {
-    pill.className = 'badge gps-pill text-bg-' + clase;
-    pill.innerHTML = '<i class="bi bi-crosshair"></i> ' + texto;
-  }
-  if (navigator.geolocation) {
-    navigator.geolocation.watchPosition(function (p) {
-      posicion = p.coords;
-      pintarGps('success', 'Ubicación activa (±' + Math.round(p.coords.accuracy) + ' m)');
-    }, function () {
-      pintarGps('danger', 'Sin ubicación: permite el acceso al GPS');
-    }, {enableHighAccuracy: true, maximumAge: 10000, timeout: 20000});
-  } else {
-    pintarGps('danger', 'Este dispositivo no tiene GPS');
-  }
-
   // --- Fotos -------------------------------------------------------------
   function crearMiniatura(d) {
     var div = document.createElement('div');
@@ -30,22 +11,19 @@
       '<button type="button" class="quitar" aria-label="Quitar foto">&times;</button>';
     div.querySelector('a').href = d.url;
     div.querySelector('img').src = d.url;
-    div.querySelector('.etapa').textContent = d.etapa + (d.con_gps ? ' · GPS' : '');
+    div.querySelector('.etapa').textContent = (d.titulo || d.etapa);
     div.querySelector('.quitar').dataset.url = d.eliminar;
     return div;
   }
 
   function subirFoto(archivo, input) {
-    var contenedor = input.closest('.card-body');
+    var contenedor = input.closest('.js-bloque-fotos');
     var grid = contenedor.querySelector('.js-fotos');
     var datos = new FormData();
     datos.append('imagen', archivo);
-    datos.append('etapa', contenedor.querySelector('.js-etapa').value);
+    var etapa = contenedor.querySelector('.js-etapa');
+    datos.append('etapa', etapa ? etapa.value : 'otro');
     if (input.dataset.equipo) datos.append('equipo', input.dataset.equipo);
-    if (posicion) {
-      datos.append('lat', posicion.latitude.toFixed(6));
-      datos.append('lng', posicion.longitude.toFixed(6));
-    }
     var espera = document.createElement('div');
     espera.className = 'foto d-flex align-items-center justify-content-center';
     espera.style.aspectRatio = '1';
@@ -72,6 +50,70 @@
         return cadena.then(function () { return subirFoto(f, input); });
       }, Promise.resolve());
     });
+  });
+
+  // --- Fotos del procedimiento (6 pasos por equipo) ----------------------------
+  function progreso(tarjeta) {
+    var obligatorias = tarjeta.querySelectorAll('.slot[data-obligatoria="1"]');
+    var faltan = Array.prototype.filter.call(obligatorias, function (sl) { return !sl.classList.contains('lleno'); });
+    tarjeta.dataset.faltan = faltan.map(function (sl) { return sl.dataset.nombre; }).join(', ');
+    var badge = tarjeta.querySelector('[data-progreso]');
+    var hechas = obligatorias.length - faltan.length;
+    badge.className = 'badge fotos-progreso ' + (faltan.length ? 'text-bg-warning' : 'text-bg-success');
+    badge.innerHTML = faltan.length
+      ? '<i class="bi bi-camera"></i> ' + hechas + ' de ' + obligatorias.length + ' obligatorias · faltan ' + faltan.length
+      : '<i class="bi bi-check-circle"></i> Fotos completas';
+  }
+  function pintarSlot(slot, d) {
+    var img = slot.querySelector('.slot-img'), boton = slot.querySelector('.slot-btn');
+    var quitar = slot.querySelector('.slot-quitar');
+    if (d) {
+      img.href = d.url; img.target = '_blank';
+      img.innerHTML = '<img alt="">';
+      img.querySelector('img').src = d.url + (d.url.indexOf('?') < 0 ? '?t=' + Date.now() : '');
+      slot.classList.add('lleno');
+      boton.classList.replace('btn-info', 'btn-outline-secondary');
+      boton.querySelector('span').textContent = 'Retomar';
+      quitar.dataset.url = d.eliminar; quitar.hidden = false;
+    } else {
+      img.removeAttribute('href'); img.removeAttribute('target');
+      img.innerHTML = '<i class="bi bi-camera"></i>';
+      slot.classList.remove('lleno');
+      boton.classList.replace('btn-outline-secondary', 'btn-info');
+      boton.querySelector('span').textContent = 'Tomar foto';
+      quitar.hidden = true; delete quitar.dataset.url;
+    }
+    progreso(slot.closest('.equipo-card'));
+  }
+  document.querySelectorAll('.equipo-card').forEach(progreso);
+
+  document.querySelectorAll('.js-slot').forEach(function (input) {
+    input.addEventListener('change', function () {
+      var archivo = input.files[0], slot = input.closest('.slot');
+      input.value = '';
+      if (!archivo) return;
+      var datos = new FormData();
+      datos.append('imagen', archivo);
+      datos.append('equipo', input.dataset.equipo);
+      datos.append('paso', input.dataset.paso);
+      slot.classList.add('subiendo');
+      fetch(form.dataset.fotoUrl, {method: 'POST', body: datos, headers: {'X-CSRFToken': csrf}})
+        .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, json: j}; }); })
+        .then(function (res) {
+          if (!res.ok) throw new Error(res.json.error || 'No se pudo subir la foto.');
+          pintarSlot(slot, res.json);
+        })
+        .catch(function (e) { alert(e.message || 'No se pudo subir la foto.'); })
+        .then(function () { slot.classList.remove('subiendo'); });
+    });
+  });
+  form.addEventListener('click', function (ev) {
+    var boton = ev.target.closest('.slot-quitar');
+    if (!boton || !boton.dataset.url || !confirm('¿Quitar esta foto?')) return;
+    var slot = boton.closest('.slot');
+    fetch(boton.dataset.url, {method: 'POST', headers: {'X-CSRFToken': csrf}})
+      .then(function (r) { if (!r.ok) throw new Error(); pintarSlot(slot, null); })
+      .catch(function () { alert('No se pudo quitar la foto.'); });
   });
 
   form.addEventListener('click', function (ev) {
@@ -137,14 +179,21 @@
       ev.preventDefault(); return;
     }
     if (firmado) document.getElementById('firma_data').value = canvas.toDataURL('image/png');
-    var enviar = ev.submitter && ev.submitter.value === 'enviar';
-    if (!enviar) return;
-    if (!confirm('¿Enviar el informe a revisión? Después no podrás editarlo.')) {
-      ev.preventDefault(); return;
+    var accion = ev.submitter ? ev.submitter.value : '';
+    if (accion.indexOf('terminar_') === 0) {
+      var tarjeta = ev.submitter.closest('.equipo-card');
+      if (tarjeta && tarjeta.dataset.faltan &&
+          !confirm('Faltan estas fotos: ' + tarjeta.dataset.faltan + '.' + String.fromCharCode(10, 10) + '¿Terminar el equipo de todas formas? Podrás agregarlas después.')) {
+        ev.preventDefault();
+      }
+      return;
     }
-    if (posicion) {
-      form.querySelector('[name=lat_fin]').value = posicion.latitude.toFixed(6);
-      form.querySelector('[name=lng_fin]').value = posicion.longitude.toFixed(6);
+    var enviar = accion === 'enviar';
+    if (!enviar) return;
+    var conFaltas = Array.prototype.filter.call(document.querySelectorAll('.equipo-card'), function (t) { return t.dataset.faltan; });
+    var aviso = conFaltas.length ? 'Aún faltan fotos en ' + conFaltas.length + ' equipo(s). Puedes completarlas mientras el informe esté en revisión.' + String.fromCharCode(10, 10) : '';
+    if (!confirm(aviso + '¿Enviar el informe a revisión?')) {
+      ev.preventDefault(); return;
     }
   });
 })();

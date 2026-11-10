@@ -8,11 +8,12 @@
     <div class="text-body-secondary">{{ orden.numero }} · {{ orden.titulo }}<br>
       <i class="bi bi-geo-alt"></i> {{ orden.cliente }} · {{ orden.ubicacion.nombre }}</div>
   </div>
-  <span id="gps-estado" class="badge text-bg-secondary gps-pill"><i class="bi bi-crosshair"></i> Buscando ubicación…</span>
+  <div class="d-flex gap-2 flex-wrap align-items-center">
+    {% if hay_terminados %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'informe_pdf' informe.pk %}"><i class="bi bi-file-earmark-pdf"></i> Informe general (PDF)</a>{% endif %}
+  </div>
 </div>
 
 <form method="post" id="informe-form" novalidate data-foto-url="{% url 'foto_subir' informe.pk %}">{% csrf_token %}
-  <input type="hidden" name="lat_fin"><input type="hidden" name="lng_fin">
   <input type="hidden" name="firma_data" id="firma_data">
   {# Enter dentro de un campo guarda; sin esto dispararía el primer botón (Terminar equipo) #}
   <button name="accion" value="guardar" hidden tabindex="-1" aria-hidden="true"></button>
@@ -25,10 +26,19 @@
 
   {% if form.errors %}<div class="alert alert-danger">Revisa los campos marcados en rojo.</div>{% endif %}
 
+  {% if faltan_fotos %}
+  <div class="alert alert-warning">
+    <div class="fw-bold mb-1"><i class="bi bi-camera"></i> Te faltan fotos en {{ faltan_fotos|length }} equipo{{ faltan_fotos|length|pluralize }}</div>
+    <ul class="mb-0 ps-3">
+      {% for e in faltan_fotos %}<li><a href="#eq-{{ e.pk }}" class="alert-link">{{ e.activo.etiqueta }}</a>: {{ e.pendientes_texto }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
   <h2 class="h5 mb-1">Equipos intervenidos</h2>
-  <p class="text-body-secondary small">Termina cada equipo apenas lo intervengas: su ficha en PDF queda disponible al instante.</p>
+  <p class="text-body-secondary small">Saca las 6 fotos de cada equipo en el orden del trabajo. Termina cada equipo apenas lo intervengas: su informe en PDF queda disponible al instante. Si olvidas una foto, puedes agregarla después desde aquí.</p>
   {% for eq, f in bloques %}
-  <div class="card equipo-card mb-3 {% if eq.finalizado %}border-success{% endif %}" id="eq-{{ eq.pk }}" data-equipo="{{ eq.pk }}">
+  <div class="card equipo-card mb-3 {% if eq.finalizado %}border-success{% endif %}" id="eq-{{ eq.pk }}" data-equipo="{{ eq.pk }}" data-faltan="{{ eq.pendientes_texto }}">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span>{{ eq.activo.etiqueta }} · {{ eq.activo.marca_modelo }}</span>
       {% if eq.finalizado %}<span class="badge text-bg-success"><i class="bi bi-check-circle"></i> Terminado</span>{% endif %}
@@ -36,7 +46,7 @@
     <div class="card-body">
       <div class="small text-body-secondary mb-3">
         <i class="bi bi-pin-map"></i> {{ eq.activo.ubicacion_exacta|default:"Sin ubicación exacta" }}
-        {% if eq.activo.fuera_de_norma %}<span class="badge text-bg-danger ms-2">Fuera de norma (R-22)</span>{% endif %}
+        {% if eq.activo.fuera_de_norma %}<span class="badge text-bg-warning ms-2">Refrigerante R-22</span>{% endif %}
       </div>
       <div class="row g-3">
         <div class="col-md-6"><label class="form-label">{{ f.tipo_mantenimiento.label }}</label>{{ f.tipo_mantenimiento }}</div>
@@ -46,9 +56,17 @@
           {% for c in f.tareas %}<div class="col"><div class="form-check">{{ c.tag }}<label class="form-check-label" for="{{ c.id_for_label }}">{{ c.choice_label }}</label></div></div>{% endfor %}
           </div>
         </div>
+        <div class="col-12">
+          <div class="norma-switch">
+            <div class="form-check form-switch mb-0">{{ f.fuera_de_norma }}
+              <label class="form-check-label fw-bold" for="{{ f.fuera_de_norma.id_for_label }}">Equipo fuera de norma</label></div>
+            <div class="form-text mt-1">{% if eq.activo.fuera_de_norma %}Se marcó solo porque el refrigerante es R-22; apágalo si no corresponde. {% endif %}Si está activado, el informe dice «EQUIPO FUERA DE NORMA» en rojo.</div>
+          </div>
+        </div>
         <div class="col-12"><label class="form-label">Observaciones</label>{{ f.observaciones }}
-          <div class="form-text">{% if eq.activo.fuera_de_norma %}Se agrega sola la nota «EQUIPO FUERA DE NORMA (REFRIGERANTE R-22)». {% endif %}Si no escribes nada saldrá «SIN OBS».</div></div>
+          <div class="form-text">Es opcional: si no escribes nada, no aparece en el informe.</div></div>
 
+        <div class="col-12 form-text mt-3 mb-0"><i class="bi bi-info-circle"></i> Mediciones <strong>opcionales</strong>: lo que dejes vacío no aparece en el informe.</div>
         <div class="col-6 col-md-3"><label class="form-label small">{{ f.presion.label }}</label>{{ f.presion }}{{ f.presion.errors }}</div>
         <div class="col-6 col-md-3"><label class="form-label small">{{ f.consumo_total.label }}</label>{{ f.consumo_total }}{{ f.consumo_total.errors }}</div>
         <div class="col-6 col-md-3"><label class="form-label small">{{ f.consumo_ventilador.label }}</label>{{ f.consumo_ventilador }}{{ f.consumo_ventilador.errors }}</div>
@@ -56,26 +74,48 @@
           <div class="input-group">{{ f.temp_inyeccion }}{{ f.modo }}</div>{{ f.temp_inyeccion.errors }}</div>
 
         <div class="col-12">
-          <label class="form-label">Fotos del equipo <span class="text-body-secondary small">(sube las que quieras: antes, durante y después)</span></label>
-          <div class="d-flex gap-2 mb-2">
-            <select class="form-select form-select-sm js-etapa" style="max-width:140px">
-              {% for v, l in etapas %}<option value="{{ v }}" {% if v == 'otro' %}selected{% endif %}>{{ l }}</option>{% endfor %}
-            </select>
-            <label class="btn btn-sm btn-outline-info mb-0"><i class="bi bi-camera"></i> Tomar / subir foto
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <label class="form-label mb-0">Fotos del procedimiento</label>
+            <span class="badge fotos-progreso" data-progreso></span>
+          </div>
+          <div class="slots">
+            {% for p in eq.pasos %}
+            <div class="slot {% if p.foto %}lleno{% endif %}" data-paso="{{ p.clave }}" data-obligatoria="{{ p.obligatoria|yesno:'1,0' }}" data-nombre="{{ p.nombre }}">
+              <span class="slot-num">{{ p.numero }}</span>
+              <a class="slot-img" {% if p.foto %}href="{{ p.foto.imagen.url }}" target="_blank"{% endif %}>
+                {% if p.foto %}<img src="{{ p.foto.imagen.url }}" alt="{{ p.nombre }}">{% else %}<i class="bi bi-camera"></i>{% endif %}
+              </a>
+              <div class="slot-cuerpo">
+                <b>{{ p.nombre }}</b>
+                {% if not p.obligatoria %}<span class="slot-opcional">Opcional</span>{% endif %}
+                <div class="slot-acciones">
+                  <label class="btn btn-sm {% if p.foto %}btn-outline-secondary{% else %}btn-info{% endif %} mb-0 slot-btn"><i class="bi bi-camera"></i> <span>{% if p.foto %}Retomar{% else %}Tomar foto{% endif %}</span>
+                    <input type="file" accept="image/*" capture="environment" class="js-slot" data-equipo="{{ eq.pk }}" data-paso="{{ p.clave }}" hidden></label>
+                  <button type="button" class="btn btn-sm btn-outline-secondary slot-quitar" {% if p.foto %}data-url="{% url 'foto_eliminar' p.foto.pk %}"{% else %}hidden{% endif %} aria-label="Quitar foto de {{ p.nombre }}"><i class="bi bi-trash"></i></button>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-12 js-bloque-fotos">
+          <label class="form-label">Otras fotos <span class="text-body-secondary small">(opcional: detalles, daños, repuestos…)</span></label>
+          <div class="mb-2">
+            <label class="btn btn-sm btn-outline-secondary mb-0"><i class="bi bi-plus-lg"></i> Agregar otra foto
               <input type="file" accept="image/*" capture="environment" class="js-foto" data-equipo="{{ eq.pk }}" hidden multiple>
             </label>
           </div>
           <div class="foto-grid js-fotos">
-            {% for foto in eq.fotos.all %}
+            {% for foto in eq.fotos_extra %}
               <div class="foto" data-id="{{ foto.pk }}"><a href="{{ foto.imagen.url }}" target="_blank"><img src="{{ foto.imagen.url }}" alt=""></a>
-                <span class="etapa">{{ foto.get_etapa_display }}</span>
+                <span class="etapa">{{ foto.titulo }}</span>
                 <button type="button" class="quitar" data-url="{% url 'foto_eliminar' foto.pk %}" aria-label="Quitar foto">&times;</button></div>
             {% endfor %}
           </div>
         </div>
         <div class="col-12 d-flex gap-2 flex-wrap">
           <button name="accion" value="terminar_{{ eq.pk }}" class="btn btn-success flex-grow-1"><i class="bi bi-check2-circle"></i> {% if eq.finalizado %}Guardar cambios del equipo{% else %}Terminar equipo{% endif %}</button>
-          {% if eq.finalizado %}<a class="btn btn-outline-danger" href="{% url 'equipo_pdf' eq.pk %}"><i class="bi bi-file-earmark-pdf"></i> Ficha PDF</a>{% endif %}
+          {% if eq.finalizado %}<a class="btn btn-outline-danger" href="{% url 'equipo_pdf' eq.pk %}"><i class="bi bi-file-earmark-pdf"></i> Informe del equipo (PDF)</a>{% endif %}
           <button name="accion" value="quitar_{{ eq.pk }}" class="btn btn-outline-secondary js-quitar-equipo" title="Quitar este equipo del informe"><i class="bi bi-trash"></i></button>
         </div>
       </div>
@@ -124,7 +164,7 @@
     </div>
   </div>
 
-  <div class="card mb-3"><div class="card-header">Fotos generales del trabajo</div><div class="card-body">
+  <div class="card mb-3"><div class="card-header">Fotos generales del trabajo</div><div class="card-body js-bloque-fotos">
     <div class="d-flex gap-2 mb-2">
       <select class="form-select form-select-sm js-etapa" style="max-width:140px">
         {% for v, l in etapas %}<option value="{{ v }}" {% if v == 'otro' %}selected{% endif %}>{{ l }}</option>{% endfor %}

@@ -2,7 +2,6 @@ import base64
 import binascii
 from collections import OrderedDict
 from datetime import date
-from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.core.files.base import ContentFile
@@ -24,28 +23,14 @@ from core.permissions import (RolRequiredMixin, informes_visibles, ordenes_visib
 
 from .exports import equipos_a_excel, ficha_a_pdf, informe_a_excel, informe_a_pdf, reporte_pdf
 from .forms import EquipoNuevoForm, InformeEquipoForm, InformeForm, InformeNuevoForm, OrdenForm
-from .models import TAREAS_CLAVES, FotoInforme, Informe, InformeEquipo, OrdenTrabajo
+from .models import (PASO_NOMBRE, TAREAS_CLAVES, FotoInforme, Informe, InformeEquipo,
+                     OrdenTrabajo)
 
 ADMIN, TECNICO, CLIENTE = User.Rol.ADMIN, User.Rol.TECNICO, User.Rol.CLIENTE
 TIPO_POR_ORDEN = {
     OrdenTrabajo.Tipo.CORRECTIVO: InformeEquipo.Tipo.CORRECTIVO,
     OrdenTrabajo.Tipo.EMERGENCIA: InformeEquipo.Tipo.CORRECTIVO,
 }
-
-
-def _coord(valor, limite):
-    """Convierte un valor de formulario a Decimal(6) o None si no es una coordenada válida."""
-    try:
-        d = Decimal(str(valor)).quantize(Decimal('0.000001'))
-    except (InvalidOperation, TypeError, ValueError):
-        return None
-    return d if abs(d) <= limite else None
-
-
-def _gps(post, sufijo=''):
-    lat = _coord(post.get(f'lat{sufijo}'), 90)
-    lng = _coord(post.get(f'lng{sufijo}'), 180)
-    return (lat, lng) if lat is not None and lng is not None else (None, None)
 
 
 def _puede_editar(user, informe):
@@ -104,8 +89,13 @@ def orden_detalle(request, pk):
     informe = getattr(orden, 'informe', None)
     if request.user.es_cliente and (informe is None or informe.estado != Informe.Estado.EMITIDO):
         informe = None
+    por_activo = {}
+    if informe is not None:
+        por_activo = {e.activo_id: e for e in informe.equipos.prefetch_related('fotos')}
+    activos = list(orden.activos.select_related('ubicacion'))
     return render(request, 'mantenciones/orden_detalle.html', {
-        'orden': orden, 'informe': informe, 'activos': orden.activos.select_related('ubicacion'),
+        'orden': orden, 'informe': informe, 'activos': activos,
+        'filas_equipos': [(a, por_activo.get(a.pk)) for a in activos],
         'puede_iniciar': request.user.es_tecnico and orden.estado in (
             OrdenTrabajo.Estado.PENDIENTE, OrdenTrabajo.Estado.EN_PROCESO),
     })
@@ -117,10 +107,37 @@ class OrdenCreate(RolRequiredMixin, CreateView):
     template_name = 'mantenciones/orden_form.html'
     extra_context = {'titulo': 'Nueva orden de trabajo'}
 
+    def _cotizacion(self):
+        """Cotización aceptada desde la que se genera la orden (?cotizacion=<id>), si no tiene orden aún."""
+        from cotizaciones.models import Cotizacion
+
+        pk = self.request.GET.get('cotizacion', '')
+        if not pk.isdigit():
+            return None
+        return Cotizacion.objects.filter(pk=pk, orden__isnull=True).select_related('cliente').first()
+
+    def get_initial(self):
+        initial = super().get_initial()
+        cot = self._cotizacion()
+        if cot:
+            initial.update(titulo=cot.titulo, descripcion=cot.descripcion, monto_neto=cot.neto,
+                           atencion=cot.contacto, ubicacion=cot.ubicacion_id)
+        return initial
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['cotizacion'] = self._cotizacion()
+        return ctx
+
     def form_valid(self, form):
         form.instance.creada_por = self.request.user
+        response = super().form_valid(form)
+        cot = self._cotizacion()
+        if cot:
+            cot.orden = self.object
+            cot.save(update_fields=['orden'])
         messages.success(self.request, 'Orden de trabajo creada.')
-        return super().form_valid(form)
+        return response
 
     def get_success_url(self):
         return self.object.get_absolute_url()
@@ -154,29 +171,19 @@ def orden_pago(request, pk):
     return redirect(request.POST.get('next') or 'finanzas')
 
 
-def _precision(post):
-    try:
-        return int(float(post.get('precision', '')))
-    except ValueError:
-        return None
-
-
 @rol_required(TECNICO)
 def informe_nuevo(request):
-    """El técnico abre un informe en terreno: se crea la orden (a su nombre) y el informe, con su GPS."""
+    """El técnico abre un informe en terreno: se crea la orden (a su nombre) y el informe."""
     form = InformeNuevoForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
         d = form.cleaned_data
-        lat, lng = _gps(request.POST)
         ahora = timezone.now()
         orden = OrdenTrabajo.objects.create(
             titulo=d['titulo'] or f'{OrdenTrabajo.Tipo(d["tipo"]).label} A/A - {d["ubicacion"].nombre}',
             tipo=d['tipo'], estado=OrdenTrabajo.Estado.EN_PROCESO, cliente=d['ubicacion'].cliente,
             ubicacion=d['ubicacion'], tecnico=request.user, atencion=d['atencion'],
             fecha_inicio=ahora, creada_por=request.user)
-        informe = Informe.objects.create(
-            orden=orden, tecnico=request.user, inicio=ahora, latitud_inicio=lat, longitud_inicio=lng,
-            precision_inicio=_precision(request.POST) if lat is not None else None)
+        informe = Informe.objects.create(orden=orden, tecnico=request.user, inicio=ahora)
         messages.success(request, f'Orden {orden.numero} creada. Agrega los equipos que vas a intervenir.')
         return redirect('informe_editar', pk=informe.pk)
     return render(request, 'mantenciones/informe_nuevo.html', {'form': form})
@@ -185,21 +192,13 @@ def informe_nuevo(request):
 @require_POST
 @rol_required(TECNICO)
 def orden_iniciar(request, pk):
-    """El técnico inicia el trabajo: se registra su ubicación y se abre el informe."""
+    """El técnico inicia el trabajo: la orden pasa a «en proceso» y se abre el informe."""
     orden = get_object_or_404(ordenes_visibles(request.user), pk=pk)
     if orden.estado not in (OrdenTrabajo.Estado.PENDIENTE, OrdenTrabajo.Estado.EN_PROCESO):
         messages.error(request, 'Esta orden ya no se puede iniciar.')
         return redirect('orden_detalle', pk=orden.pk)
 
-    lat, lng = _gps(request.POST)
-    precision = _precision(request.POST)
-
-    informe, creado = Informe.objects.get_or_create(
-        orden=orden, defaults={'tecnico': request.user, 'latitud_inicio': lat,
-                               'longitud_inicio': lng, 'precision_inicio': precision})
-    if not creado and informe.latitud_inicio is None and lat is not None:
-        informe.latitud_inicio, informe.longitud_inicio, informe.precision_inicio = lat, lng, precision
-        informe.save(update_fields=['latitud_inicio', 'longitud_inicio', 'precision_inicio'])
+    informe, _ = Informe.objects.get_or_create(orden=orden, defaults={'tecnico': request.user})
     if orden.estado == OrdenTrabajo.Estado.PENDIENTE:
         orden.estado = OrdenTrabajo.Estado.EN_PROCESO
         orden.fecha_inicio = timezone.now()
@@ -347,7 +346,7 @@ def informe_mensual(request):
         'borradores': borradores, 'sin_revisar': sin_revisar,
         'resumen': {
             'ordenes': len({e.informe.orden_id for e in equipos}),
-            'fuera_norma': sum(1 for e in equipos if e.activo.fuera_de_norma),
+            'fuera_norma': sum(1 for e in equipos if e.fuera_de_norma),
             'con_observaciones': sum(1 for e in equipos if e.observaciones.strip()),
             'fotos': sum(len(e.fotos.all()) for e in equipos),
         },
@@ -419,13 +418,15 @@ def informe_editar(request, pk):
         'nuevo_form': EquipoNuevoForm(prefix='nuevo', ubicaciones=ubicaciones,
                                       initial={'ubicacion': orden.ubicacion_id}),
         'es_borrador': informe.estado == Informe.Estado.BORRADOR,
+        'hay_terminados': any(e.finalizado for e in equipos),
+        'faltan_fotos': [e for e in equipos if e.finalizado and e.pasos_pendientes],
     })
 
 
 def _nuevo_informe_equipo(informe, activo):
     return InformeEquipo.objects.get_or_create(
         informe=informe, activo=activo,
-        defaults={'tareas': TAREAS_CLAVES,
+        defaults={'tareas': TAREAS_CLAVES, 'fuera_de_norma': activo.fuera_de_norma,
                   'tipo_mantenimiento': TIPO_POR_ORDEN.get(informe.orden.tipo, InformeEquipo.Tipo.PREVENTIVO)})[0]
 
 
@@ -505,7 +506,10 @@ def _terminar_equipo(request, informe, equipo_pk):
     if not eq.finalizado:
         eq.finalizado, eq.completado_en = True, timezone.now()
         eq.save(update_fields=['finalizado', 'completado_en'])
-    messages.success(request, f'{eq.activo.etiqueta} terminado. Su ficha PDF ya está disponible.')
+    messages.success(request, f'{eq.activo.etiqueta} terminado. Su informe PDF ya está disponible.')
+    if eq.pasos_pendientes:
+        messages.warning(request, f'Faltan fotos del {eq.activo.etiqueta}: {eq.pendientes_texto}. '
+                                  'Puedes agregarlas después desde este mismo informe.')
     return redirect(f'{volver}#eq-{eq.pk}')
 
 
@@ -517,16 +521,19 @@ def _enviar_informe(request, informe):
     if not informe.equipos.exists() and not informe.fotos.exists():
         messages.error(request, 'Agrega al menos una foto antes de enviar el informe.')
         return redirect('informe_editar', pk=informe.pk)
-    lat, lng = _gps(request.POST, '_fin')
     informe.estado = Informe.Estado.ENVIADO
     informe.termino = timezone.now()
-    informe.latitud_fin, informe.longitud_fin = lat, lng
     informe.save()
     orden = informe.orden
     orden.estado = OrdenTrabajo.Estado.EN_REVISION
     orden.fecha_termino = informe.termino
     orden.save(update_fields=['estado', 'fecha_termino'])
     messages.success(request, 'Informe enviado a revisión.')
+    con_faltas = [e for e in informe.equipos.select_related('activo').prefetch_related('fotos') if e.pasos_pendientes]
+    if con_faltas:
+        messages.warning(request, 'Aún faltan fotos en: ' + '; '.join(
+            f'{e.activo.etiqueta} ({e.pendientes_texto})' for e in con_faltas)
+            + '. Puedes completarlas editando el informe mientras esté en revisión.')
     return redirect('informe_detalle', pk=informe.pk)
 
 
@@ -549,17 +556,27 @@ def foto_subir(request, pk):
     if request.POST.get('equipo'):
         equipo = informe.equipos.filter(pk=request.POST['equipo']).first()
     etapa = request.POST.get('etapa')
-    lat, lng = _gps(request.POST)
+    paso = request.POST.get('paso', '')
+    if paso and (paso not in PASO_NOMBRE or equipo is None):
+        return JsonResponse({'error': 'Paso de foto no válido.'}, status=400)
+    if paso:  # cada paso tiene una sola foto: volver a tomarla reemplaza la anterior
+        for anterior in FotoInforme.objects.filter(equipo=equipo, paso=paso):
+            anterior.imagen.delete(save=False)
+            anterior.delete()
     foto = FotoInforme(
-        informe=informe, equipo=equipo, imagen=archivo, latitud=lat, longitud=lng,
+        informe=informe, equipo=equipo, imagen=archivo, paso=paso,
         etapa=etapa if etapa in FotoInforme.Etapa.values else FotoInforme.Etapa.OTRO,
         descripcion=request.POST.get('descripcion', '')[:200],
     )
     foto.save()
-    return JsonResponse({
-        'id': foto.pk, 'url': foto.imagen.url, 'etapa': foto.get_etapa_display(),
-        'con_gps': lat is not None, 'eliminar': reverse('foto_eliminar', args=[foto.pk]),
-    })
+    respuesta = {
+        'id': foto.pk, 'url': foto.imagen.url, 'etapa': foto.get_etapa_display(), 'paso': foto.paso,
+        'titulo': foto.titulo, 'eliminar': reverse('foto_eliminar', args=[foto.pk]),
+    }
+    if equipo is not None:
+        equipo = InformeEquipo.objects.prefetch_related('fotos').get(pk=equipo.pk)
+        respuesta['faltan'] = [p['nombre'] for p in equipo.pasos_pendientes]
+    return JsonResponse(respuesta)
 
 
 @require_POST
@@ -569,9 +586,14 @@ def foto_eliminar(request, pk):
     informe = get_object_or_404(informes_visibles(request.user), pk=foto.informe_id)
     if not _puede_editar(request.user, informe):
         return JsonResponse({'error': 'No se puede editar.'}, status=403)
+    equipo_id = foto.equipo_id
     foto.imagen.delete(save=False)
     foto.delete()
-    return JsonResponse({'ok': True})
+    respuesta = {'ok': True}
+    if equipo_id:
+        equipo = InformeEquipo.objects.prefetch_related('fotos').get(pk=equipo_id)
+        respuesta['faltan'] = [p['nombre'] for p in equipo.pasos_pendientes]
+    return JsonResponse(respuesta)
 
 
 @require_POST

@@ -1,20 +1,31 @@
 {% extends 'base.html' %}
-{% load ui %}
+{% load static ui %}
 {% block title %}Inicio{% endblock %}
+{% block head %}<link href="{% static 'css/dashboard.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div><h1>{{ cliente|default:"Mi cuenta" }}</h1>
-    <div class="text-body-secondary">Estado de tus equipos y mantenciones</div></div>
-</div>
+<section class="hero-dash reveal">
+  <img class="hero-marca" src="{% static 'img/mark.png' %}" alt="">
+  <div class="hero-txt">
+    <span class="eyebrow eyebrow-claro">Tu cuenta</span>
+    <h1>{{ cliente|default:"Mi cuenta" }}</h1>
+    <p>Estado de tus equipos y mantenciones</p>
+    <div class="hero-chips">
+      <span class="hchip"><i class="bi bi-fan"></i><b data-count="{{ equipos }}">{{ equipos }}</b> equipos registrados</span>
+      <span class="hchip"><i class="bi bi-check2-circle"></i><b data-count="{{ realizadas_anio }}">{{ realizadas_anio }}</b> mantenciones este año</span>
+      <span class="hchip {% if proximas|length %}hot{% endif %}"><i class="bi bi-calendar-event"></i><b data-count="{{ proximas|length }}">{{ proximas|length }}</b> próximas / en curso</span>
+    </div>
+  </div>
+  <div class="hero-acciones"><a href="{% url 'informes' %}" class="btn btn-claro"><i class="bi bi-file-earmark-text"></i> Ver mis informes</a></div>
+</section>
 
 {% if not cliente %}
   <div class="alert alert-warning">Tu usuario aún no está asociado a una empresa. Contacta a Air Control Pro.</div>
 {% endif %}
 
 <div class="row g-3 mb-4">
-  <div class="col-6 col-lg-3"><div class="card kpi"><div class="card-body"><div class="valor">{{ equipos }}</div><div class="etiqueta">Equipos registrados</div></div></div></div>
-  <div class="col-6 col-lg-3"><div class="card kpi verde"><div class="card-body"><div class="valor">{{ realizadas_anio }}</div><div class="etiqueta">Mantenciones realizadas este año</div></div></div></div>
-  <div class="col-6 col-lg-3"><div class="card kpi ambar"><div class="card-body"><div class="valor">{{ proximas|length }}</div><div class="etiqueta">Próximas / en curso</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card kpi"><div class="card-body"><div class="valor" data-count="{{ equipos }}">{{ equipos }}</div><div class="etiqueta">Equipos registrados</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card kpi verde"><div class="card-body"><div class="valor" data-count="{{ realizadas_anio }}">{{ realizadas_anio }}</div><div class="etiqueta">Mantenciones realizadas este año</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card kpi ambar"><div class="card-body"><div class="valor" data-count="{{ proximas|length }}">{{ proximas|length }}</div><div class="etiqueta">Próximas / en curso</div></div></div></div>
   <div class="col-6 col-lg-3"><div class="card kpi"><div class="card-body">
     <div class="etiqueta mb-1">Condición de equipos</div>
     {% for label, n in condiciones %}<span class="me-2 small">{{ label }}: <strong>{{ n }}</strong></span>{% endfor %}

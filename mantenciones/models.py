@@ -21,6 +21,19 @@ TAREAS_MANTENCION = [
 ]
 TAREAS_CLAVES = [clave for clave, _ in TAREAS_MANTENCION]
 
+# Fotos que el técnico saca de cada equipo, en el orden del trabajo: (clave, nombre, obligatoria).
+# Las obligatorias que falten se avisan al técnico, que puede agregarlas después; las opcionales no.
+PASOS_FOTO = [
+    ('liquido', 'Aplicación del líquido', True),
+    ('hidrolavadora', 'Lavado con hidrolavadora', True),
+    ('soplador', 'Secado con soplador', True),
+    ('desarmado', 'Equipo desarmado', True),
+    ('condensadora', 'Condensadora', False),
+    ('terminado', 'Equipo armado y funcionando', True),
+]
+PASOS_CLAVES = [clave for clave, _, _ in PASOS_FOTO]
+PASO_NOMBRE = {clave: nombre for clave, nombre, _ in PASOS_FOTO}
+
 
 def _siguiente_numero(modelo, prefijo, anio):
     base = f'{prefijo}-{anio}-'
@@ -221,12 +234,42 @@ class InformeEquipo(models.Model):
                                          null=True, blank=True)
     modo = models.CharField('Modo de la medición', max_length=5, choices=Modo.choices, default=Modo.FRIO)
     observaciones = models.TextField(blank=True)
+    fuera_de_norma = models.BooleanField(
+        'Equipo fuera de norma', default=False,
+        help_text='Lo decide el técnico en cada informe. Parte marcado si el refrigerante del equipo es R-22.')
     finalizado = models.BooleanField('Equipo terminado', default=False)
     completado_en = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['activo__numero_equipo', 'activo__codigo']
         unique_together = [('informe', 'activo')]
+
+    @property
+    def pasos(self):
+        """Las fotos del procedimiento, en orden: [{clave, nombre, obligatoria, numero, foto|None}]."""
+        por_paso = {f.paso: f for f in self.fotos.all() if f.paso}
+        return [{'clave': c, 'nombre': n, 'obligatoria': o, 'numero': i, 'foto': por_paso.get(c)}
+                for i, (c, n, o) in enumerate(PASOS_FOTO, start=1)]
+
+    @property
+    def pasos_pendientes(self):
+        """Fotos obligatorias que aún no se han subido."""
+        return [p for p in self.pasos if p['obligatoria'] and p['foto'] is None]
+
+    @property
+    def pendientes_texto(self):
+        return ', '.join(p['nombre'] for p in self.pasos_pendientes)
+
+    @property
+    def fotos_extra(self):
+        """Fotos adicionales que no corresponden a un paso."""
+        return [f for f in self.fotos.all() if not f.paso]
+
+    @property
+    def fotos_ordenadas(self):
+        """Primero las fotos de cada paso, en el orden del trabajo; después las adicionales."""
+        orden = {c: i for i, c in enumerate(PASOS_CLAVES)}
+        return sorted(self.fotos.all(), key=lambda f: (orden.get(f.paso, len(orden)), f.tomada_en))
 
     @property
     def tareas_labels(self):
@@ -239,11 +282,33 @@ class InformeEquipo(models.Model):
 
     @property
     def observaciones_informe(self):
-        """(fuera_de_norma, texto): la alerta de R-22 va aparte para mostrarla en rojo."""
+        """(fuera_de_norma, texto): la alerta de R-22 va aparte para mostrarla en rojo.
+
+        Si el técnico no escribe nada (y el equipo no es R-22) no hay observaciones y la línea no sale en el informe.
+        """
         extra = self.observaciones.strip()
-        if self.activo.fuera_de_norma:
-            return 'EQUIPO FUERA DE NORMA (REFRIGERANTE R-22)', extra
-        return '', extra or 'SIN OBS'
+        if self.fuera_de_norma:
+            motivo = ' (REFRIGERANTE R-22)' if self.activo.fuera_de_norma else ''
+            return f'EQUIPO FUERA DE NORMA{motivo}', extra
+        return '', extra
+
+    @property
+    def mediciones(self):
+        """Solo las mediciones que el técnico anotó: [(nombre, 'valor unidad')]. Lo vacío no sale en el informe."""
+        def fmt(valor, unidad):
+            return f'{format(valor.normalize(), "f")}{unidad}'
+
+        filas = []
+        if self.presion is not None:
+            filas.append(('Presión de funcionamiento', fmt(self.presion, ' PSI')))
+        if self.consumo_total is not None:
+            filas.append(('Consumo eléctrico total', fmt(self.consumo_total, ' A')))
+        if self.consumo_ventilador is not None:
+            filas.append(('Consumo ventilador', fmt(self.consumo_ventilador, ' A')))
+        if self.temp_inyeccion is not None:  # el modo (frío/calor) solo importa si hay temperatura
+            filas.append((f'Temperatura de inyección ({self.get_modo_display().upper()})',
+                          fmt(self.temp_inyeccion, '°C')))
+        return filas
 
     def __str__(self):
         return f'{self.informe.numero} · {self.activo.codigo}'
@@ -261,6 +326,7 @@ class FotoInforme(models.Model):
         InformeEquipo, null=True, blank=True, on_delete=models.CASCADE, related_name='fotos',
     )
     imagen = models.ImageField(upload_to='informes/%Y/%m/')
+    paso = models.CharField('Paso del procedimiento', max_length=15, blank=True, default='')
     etapa = models.CharField(max_length=8, choices=Etapa.choices, default=Etapa.OTRO)
     descripcion = models.CharField(max_length=200, blank=True)
     latitud = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
@@ -283,6 +349,13 @@ class FotoInforme(models.Model):
             except OSError:
                 pass
         super().save(*args, **kwargs)
+
+    @property
+    def titulo(self):
+        """Texto al pie de la foto en el informe: «1 · Aplicación del líquido» o «Foto adicional»."""
+        if self.paso in PASO_NOMBRE:
+            return f'{PASOS_CLAVES.index(self.paso) + 1} · {PASO_NOMBRE[self.paso]}'
+        return self.descripcion or 'Foto adicional'
 
     def __str__(self):
         return f'Foto {self.pk} · {self.informe.numero}'

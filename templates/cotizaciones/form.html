@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+{% load ui %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><span class="eyebrow">Cotización</span><h1>{{ titulo }}</h1></div></div>
+<form method="post" novalidate>{% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+  <div class="card mb-3"><div class="card-header">Cliente</div><div class="card-body"><div class="row g-3">
+    <div class="col-md-3"><label class="form-label">{{ form.numero.label }}</label>{{ form.numero }}{{ form.numero.errors }}
+      <div class="form-text">{{ form.numero.help_text }}</div></div>
+    <div class="col-md-5"><label class="form-label">{{ form.cliente.label }}</label>{{ form.cliente }}{{ form.cliente.errors }}</div>
+    <div class="col-md-4"><label class="form-label">{{ form.ubicacion.label }}</label>{{ form.ubicacion }}{{ form.ubicacion.errors }}</div>
+    <div class="col-md-8"><label class="form-label">{{ form.titulo.label }}</label>{{ form.titulo }}{{ form.titulo.errors }}</div>
+    <div class="col-6 col-md-2"><label class="form-label">{{ form.fecha.label }}</label>{{ form.fecha }}{{ form.fecha.errors }}</div>
+    <div class="col-6 col-md-2"><label class="form-label">{{ form.validez_dias.label }}</label>{{ form.validez_dias }}{{ form.validez_dias.errors }}</div>
+    <div class="col-12"><label class="form-label">{{ form.descripcion.label }}</label>{{ form.descripcion }}</div>
+  </div></div></div>
+
+  <div class="card mb-3"><div class="card-header">A quién llamar <span class="fw-normal text-body-secondary small">(opcional: si queda vacío se usan los datos del cliente)</span></div>
+    <div class="card-body"><div class="row g-3">
+      <div class="col-md-4"><label class="form-label">{{ form.contacto_nombre.label }}</label>{{ form.contacto_nombre }}</div>
+      <div class="col-md-4"><label class="form-label">{{ form.contacto_telefono.label }}</label>{{ form.contacto_telefono }}</div>
+      <div class="col-md-4"><label class="form-label">{{ form.contacto_email.label }}</label>{{ form.contacto_email }}{{ form.contacto_email.errors }}</div>
+    </div></div></div>
+
+  <div class="card mb-3"><div class="card-header">Ítems (valores netos, CLP)</div><div class="card-body">
+    {{ items.management_form }}
+    {% if items.non_form_errors %}<div class="alert alert-danger">{{ items.non_form_errors }}</div>{% endif %}
+    <div id="items">
+      {% for f in items %}
+        <div class="row g-2 mb-2 item-row align-items-start">
+          {{ f.id }}
+          <div class="col-md-6">{{ f.descripcion }}{{ f.descripcion.errors }}</div>
+          <div class="col-4 col-md-2">{{ f.cantidad }}{{ f.cantidad.errors }}</div>
+          <div class="col-5 col-md-3">{{ f.precio_unitario }}{{ f.precio_unitario.errors }}</div>
+          <div class="col-3 col-md-1 text-end">
+            {% if f.instance.pk %}<label class="btn btn-sm btn-outline-secondary mb-0" title="Quitar"><i class="bi bi-trash"></i><input type="checkbox" name="{{ f.DELETE.html_name }}" hidden></label>
+            {% else %}<span hidden>{{ f.DELETE }}</span><button type="button" class="btn btn-sm btn-outline-secondary js-quitar" title="Quitar"><i class="bi bi-x-lg"></i></button>{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <template id="item-vacio">
+      <div class="row g-2 mb-2 item-row align-items-start">
+        <div class="col-md-6">{{ items.empty_form.descripcion }}</div>
+        <div class="col-4 col-md-2">{{ items.empty_form.cantidad }}</div>
+        <div class="col-5 col-md-3">{{ items.empty_form.precio_unitario }}</div>
+        <div class="col-3 col-md-1 text-end"><span hidden>{{ items.empty_form.DELETE }}</span><button type="button" class="btn btn-sm btn-outline-secondary js-quitar" title="Quitar"><i class="bi bi-x-lg"></i></button></div>
+      </div>
+    </template>
+    <div class="d-flex justify-content-between align-items-center mt-3">
+      <button type="button" id="agregar-item" class="btn btn-sm btn-outline-secondary"><i class="bi bi-plus-lg"></i> Agregar ítem</button>
+      <div class="text-end"><div class="text-body-secondary small">Neto <span id="t-neto">$0</span> · IVA <span id="t-iva">$0</span></div>
+        <div class="fw-bold fs-5">Total <span id="t-total">$0</span></div></div>
+    </div>
+  </div></div>
+
+  <button class="btn btn-info">Guardar cotización</button>
+  <a href="{% if form.instance.pk %}{{ form.instance.get_absolute_url }}{% else %}{% url 'cotizaciones' %}{% endif %}" class="btn btn-outline-secondary">Cancelar</a>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var cont = document.getElementById('items');
+  var total = document.getElementById('id_{{ items.prefix }}-TOTAL_FORMS');
+  var plantilla = document.getElementById('item-vacio').innerHTML;
+  var clp = function (v) { return '$' + Math.round(v).toLocaleString('es-CL'); };
+
+  function recalcular() {
+    var neto = 0;
+    cont.querySelectorAll('.item-row').forEach(function (fila) {
+      var cant = fila.querySelector('[name$="-cantidad"]'), precio = fila.querySelector('[name$="-precio_unitario"]');
+      var borrar = fila.querySelector('[name$="-DELETE"]');
+      if (cant && precio && !(borrar && borrar.checked)) neto += (parseFloat(cant.value) || 0) * (parseFloat(precio.value) || 0);
+    });
+    document.getElementById('t-neto').textContent = clp(neto);
+    document.getElementById('t-iva').textContent = clp(neto * 0.19);
+    document.getElementById('t-total').textContent = clp(neto * 1.19);
+  }
+
+  document.getElementById('agregar-item').addEventListener('click', function () {
+    var n = parseInt(total.value, 10);
+    cont.insertAdjacentHTML('beforeend', plantilla.replace(/__prefix__/g, n));
+    total.value = n + 1;
+    var fila = cont.lastElementChild;
+    var cant = fila.querySelector('[name$="-cantidad"]');
+    if (cant && !cant.value) cant.value = 1;
+    fila.querySelector('input').focus();
+    recalcular();
+  });
+  cont.addEventListener('input', recalcular);
+  cont.addEventListener('change', recalcular);
+  cont.addEventListener('click', function (e) {
+    var b = e.target.closest('.js-quitar');
+    if (b) {
+      var fila = b.closest('.item-row');
+      fila.querySelector('[name$="-DELETE"]').checked = true;  // el formset ignora las filas marcadas
+      fila.hidden = true;
+      recalcular();
+    }
+  });
+
+  // Solo se muestran las sucursales del cliente elegido.
+  var cliente = document.getElementById('id_cliente'), ubic = document.getElementById('id_ubicacion');
+  function filtrarSucursales() {
+    Array.prototype.forEach.call(ubic.options, function (o) {
+      o.hidden = !!o.value && o.dataset.cliente !== cliente.value;
+      if (o.hidden && o.selected) ubic.value = '';
+    });
+  }
+  cliente.addEventListener('change', filtrarSucursales);
+  filtrarSucursales();
+  recalcular();
+})();
+</script>
+{% endblock %}

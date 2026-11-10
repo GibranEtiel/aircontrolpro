@@ -7,6 +7,8 @@ class BootstrapFormMixin:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for campo in self.fields.values():
+            if isinstance(campo, forms.ModelChoiceField) and campo.empty_label is not None:
+                campo.empty_label = '— Elegir —'
             w = campo.widget
             if isinstance(w, (forms.CheckboxInput, forms.CheckboxSelectMultiple)):
                 clase = 'form-check-input'

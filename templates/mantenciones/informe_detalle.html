@@ -15,7 +15,7 @@
     <div class="dropdown">
       <button class="btn btn-info dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-download"></i> Exportar</button>
       <ul class="dropdown-menu dropdown-menu-end">
-        <li><a class="dropdown-item" href="{% url 'informe_pdf' informe.pk %}"><i class="bi bi-file-earmark-pdf text-danger"></i> Informe PDF (todos los equipos)</a></li>
+        <li><a class="dropdown-item" href="{% url 'informe_pdf' informe.pk %}"><i class="bi bi-file-earmark-pdf text-danger"></i> Informe general de la orden (PDF)</a></li>
         <li><a class="dropdown-item" href="{% url 'informe_excel' informe.pk %}"><i class="bi bi-file-earmark-excel text-success"></i> Excel</a></li>
         <li><button class="dropdown-item" onclick="window.print()"><i class="bi bi-printer"></i> Imprimir esta página</button></li>
       </ul>
@@ -39,11 +39,6 @@
     <div>Cliente: {{ orden.cliente }}</div>
     <div>A.t: {{ orden.atencion|default:orden.cliente.contacto|default:"—" }}</div>
     <div>Ubicación: {{ orden.ubicacion.nombre }}</div>
-    {% if informe.tiene_ubicacion %}
-    <div class="no-print small text-body-secondary">
-      {% localize off %}<a href="https://www.google.com/maps?q={{ informe.latitud_inicio }},{{ informe.longitud_inicio }}" target="_blank" rel="noopener"><i class="bi bi-geo-alt-fill"></i> Ubicación del técnico al iniciar</a>{% endlocalize %}
-      {% if informe.precision_inicio %}(±{{ informe.precision_inicio }} m){% endif %}
-    </div>{% endif %}
   </div>
 
   {% if informe.diagnostico or informe.trabajos_realizados %}
@@ -56,7 +51,7 @@
   <section class="equipo-bloque border-top pt-3 mt-3">
     <div class="d-flex justify-content-between align-items-center">
       <h3 class="h5 fw-bold mb-2">{{ eq.activo.etiqueta }}</h3>
-      {% if eq.finalizado %}<a class="no-print btn btn-sm btn-outline-danger" href="{% url 'equipo_pdf' eq.pk %}"><i class="bi bi-file-earmark-pdf"></i> Ficha PDF</a>
+      {% if eq.finalizado %}<a class="no-print btn btn-sm btn-outline-danger" href="{% url 'equipo_pdf' eq.pk %}"><i class="bi bi-file-earmark-pdf"></i> Informe del equipo (PDF)</a>
       {% else %}<span class="no-print badge text-bg-warning">Sin terminar</span>{% endif %}
     </div>
     <ul class="list-unstyled mb-3">
@@ -65,22 +60,28 @@
       <li><i class="cuadrito"></i>Tipo de mantenimiento: {{ eq.get_tipo_mantenimiento_display }}</li>
       <li><i class="cuadrito"></i>Actividades realizadas:
         <ul class="list-unstyled ps-4 mb-0">{% for t in eq.tareas_labels %}<li>- {{ t }}</li>{% endfor %}</ul></li>
-      <li><i class="cuadrito"></i>Observaciones:
-        {% if eq.activo.fuera_de_norma %}<span style="color:#d00000">EQUIPO FUERA DE NORMA (REFRIGERANTE R-22)</span>{% if eq.observaciones %}, {{ eq.observaciones }}{% endif %}
-        {% else %}{{ eq.observaciones|default:"SIN OBS" }}{% endif %}</li>
+      {% if eq.fuera_de_norma or eq.observaciones %}<li><i class="cuadrito"></i>Observaciones:
+        {% if eq.fuera_de_norma %}<span style="color:#d00000">EQUIPO FUERA DE NORMA{% if eq.activo.fuera_de_norma %} (REFRIGERANTE R-22){% endif %}</span>{% if eq.observaciones %}, {{ eq.observaciones }}{% endif %}
+        {% else %}{{ eq.observaciones }}{% endif %}</li>{% endif %}
     </ul>
     <p class="mb-1">Fotografías del equipo:</p>
-    {% if eq.fotos.all %}
+    {% if eq.pasos_pendientes and not user.es_cliente %}
+    <div class="no-print mb-2">
+      <span class="small fw-bold text-warning-emphasis"><i class="bi bi-camera"></i> Fotos pendientes:</span>
+      {% for p in eq.pasos_pendientes %}<span class="faltan-chip">{{ p.numero }} · {{ p.nombre }}</span>{% endfor %}
+      {% if puede_editar %}<a class="btn btn-sm btn-info ms-1" href="{% url 'informe_editar' informe.pk %}#eq-{{ eq.pk }}"><i class="bi bi-plus-lg"></i> Agregar fotos</a>{% endif %}
+    </div>
+    {% endif %}
+    {% if eq.fotos_ordenadas %}
     <div class="fotos-hoja mb-3">
-      {% for f in eq.fotos.all %}<a href="{{ f.imagen.url }}" target="_blank"><img src="{{ f.imagen.url }}" alt="Foto del equipo" loading="lazy"></a>{% endfor %}
+      {% for f in eq.fotos_ordenadas %}<a class="con-pie" href="{{ f.imagen.url }}" target="_blank"><img src="{{ f.imagen.url }}" alt="{{ f.titulo }}" loading="lazy"><span class="foto-pie">{{ f.titulo }}</span></a>{% endfor %}
     </div>
     {% else %}<p class="text-body-secondary">Sin fotografías.</p>{% endif %}
+    {% if eq.mediciones %}
     <table class="tabla-medidas mb-0">
-      <tr><td>Presión de funcionamiento</td><td>{{ eq.presion|default_if_none:"-" }}{% if eq.presion is not None %} PSI{% endif %}</td></tr>
-      <tr><td>Consumo eléctrico total</td><td>{{ eq.consumo_total|default_if_none:"-" }}{% if eq.consumo_total is not None %} A{% endif %}</td></tr>
-      <tr><td>Consumo ventilador</td><td>{{ eq.consumo_ventilador|default_if_none:"-" }}{% if eq.consumo_ventilador is not None %} A{% endif %}</td></tr>
-      <tr><td>Temperatura de inyección ({{ eq.get_modo_display|upper }})</td><td>{{ eq.temp_inyeccion|default_if_none:"-" }}{% if eq.temp_inyeccion is not None %}°C{% endif %}</td></tr>
+      {% for nombre, valor in eq.mediciones %}<tr><td>{{ nombre }}</td><td>{{ valor }}</td></tr>{% endfor %}
     </table>
+    {% endif %}
   </section>
   {% empty %}<p class="text-body-secondary">Sin equipos registrados.</p>{% endfor %}
 

@@ -4,6 +4,7 @@
 {% block content %}
 <div class="page-head">
   <div>
+    <span class="eyebrow">Orden de trabajo</span>
     <h1>{{ orden.numero }} <span class="badge text-bg-{{ orden.estado|badge }} fs-6 align-middle">{{ orden.get_estado_display }}</span></h1>
     <div class="text-body-secondary">{{ orden.titulo }}</div>
   </div>
@@ -11,8 +12,7 @@
     {% if user.es_admin %}<a href="{% url 'orden_editar' orden.pk %}" class="btn btn-outline-secondary"><i class="bi bi-pencil"></i> Editar</a>{% endif %}
     {% if informe %}<a href="{% url 'informe_detalle' informe.pk %}" class="btn btn-outline-info"><i class="bi bi-file-earmark-text"></i> Ver informe</a>{% endif %}
     {% if puede_iniciar %}
-      <form method="post" action="{% url 'orden_iniciar' orden.pk %}" class="js-iniciar">{% csrf_token %}
-        <input type="hidden" name="lat"><input type="hidden" name="lng"><input type="hidden" name="precision">
+      <form method="post" action="{% url 'orden_iniciar' orden.pk %}">{% csrf_token %}
         <button class="btn btn-info"><i class="bi bi-play-fill"></i> {% if orden.estado == 'en_proceso' %}Continuar informe{% else %}Iniciar trabajo{% endif %}</button>
       </form>
     {% endif %}
@@ -31,16 +31,33 @@
         <dt class="col-sm-4">Fecha programada</dt><dd class="col-sm-8">{{ orden.fecha_programada|date:"d/m/Y" }}</dd>
         {% if orden.fecha_inicio %}<dt class="col-sm-4">Inicio</dt><dd class="col-sm-8">{{ orden.fecha_inicio|date:"d/m/Y H:i" }}</dd>{% endif %}
         {% if orden.fecha_termino %}<dt class="col-sm-4">Término</dt><dd class="col-sm-8">{{ orden.fecha_termino|date:"d/m/Y H:i" }}</dd>{% endif %}
+        {% if user.es_admin and orden.cotizacion %}<dt class="col-sm-4">Cotización</dt><dd class="col-sm-8"><a href="{{ orden.cotizacion.get_absolute_url }}">{{ orden.cotizacion.numero }}</a></dd>{% endif %}
         {% if orden.descripcion %}<dt class="col-sm-4">Descripción</dt><dd class="col-sm-8">{{ orden.descripcion|linebreaksbr }}</dd>{% endif %}
       </dl>
     </div></div>
 
-    <div class="card"><div class="card-header">Equipos ({{ activos|length }})</div>
+    <div class="card"><div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span>Equipos ({{ activos|length }})</span>
+      {% if informe %}<a class="btn btn-sm btn-outline-danger" href="{% url 'informe_pdf' informe.pk %}"><i class="bi bi-file-earmark-pdf"></i> Informe general (PDF)</a>{% endif %}</div>
       <ul class="list-group list-group-flush">
-        {% for a in activos %}
-          <li class="list-group-item d-flex justify-content-between">
-            <span>{{ a.codigo }} · {{ a.nombre }}<br><small class="text-body-secondary">{{ a.marca }} {{ a.modelo }}{% if a.capacidad_btu %} · {{ a.capacidad_btu }} BTU{% endif %}</small></span>
-            <span class="badge text-bg-{{ a.condicion|badge }} align-self-center">{{ a.get_condicion_display }}</span>
+        {% for a, eq in filas_equipos %}
+          <li class="list-group-item">
+            <div class="d-flex justify-content-between gap-2">
+              <span><strong>{{ a.etiqueta }}</strong> · {{ a.ubicacion_exacta|default:a.nombre }}{% if a.fuera_de_norma %} <span class="badge text-bg-danger">R-22 fuera de norma</span>{% endif %}<br><small class="text-body-secondary">{{ a.marca }} {{ a.modelo }}{% if a.capacidad_btu %} · {{ a.capacidad_btu }} BTU{% endif %}{% if a.refrigerante %} · {{ a.refrigerante }}{% endif %}</small></span>
+              <span class="text-end flex-shrink-0">
+                {% if eq and eq.finalizado %}<span class="badge text-bg-success"><i class="bi bi-check-circle"></i> Terminado</span>
+                  <a class="btn btn-sm btn-outline-danger ms-1" href="{% url 'equipo_pdf' eq.pk %}" title="Informe de este equipo"><i class="bi bi-file-earmark-pdf"></i></a>
+                {% elif eq %}<span class="badge text-bg-warning">En curso</span>
+                {% else %}<span class="badge text-bg-{{ a.condicion|badge }}">{{ a.get_condicion_display }}</span>{% endif %}
+              </span>
+            </div>
+            {% if eq and not user.es_cliente %}
+              <div class="mt-1">
+                {% if eq.pasos_pendientes %}<span class="small text-warning-emphasis"><i class="bi bi-camera"></i> Faltan {{ eq.pasos_pendientes|length }} foto{{ eq.pasos_pendientes|length|pluralize }}:</span>
+                  {% for p in eq.pasos_pendientes %}<span class="faltan-chip">{{ p.nombre }}</span>{% endfor %}
+                {% else %}<span class="small text-success"><i class="bi bi-camera"></i> Fotos completas</span>{% endif %}
+              </div>
+            {% endif %}
           </li>
         {% empty %}<li class="list-group-item text-body-secondary">Sin equipos asociados.</li>{% endfor %}
       </ul></div>
@@ -68,4 +85,3 @@
 </div>
 {% endblock %}
 
-{% block scripts %}{% if puede_iniciar %}<script src="{% static 'js/gps.js' %}"></script>{% endif %}{% endblock %}

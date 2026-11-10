@@ -18,7 +18,28 @@ BADGES = {
     'operativo': 'success', 'observaciones': 'warning', 'fuera_servicio': 'danger',
     # prioridad
     'media': 'info', 'alta': 'danger',
+    # cotizaciones
+    'aceptada': 'success', 'rechazada': 'danger',
 }
+
+
+@register.filter
+def wa(telefono):
+    """Número para wa.me: '9 3887 5867' o '+56 9 3887 5867' -> '56938875867' ('' si no parece un celular)."""
+    digitos = ''.join(c for c in str(telefono or '') if c.isdigit())
+    if digitos.startswith('56') and len(digitos) == 11:
+        return digitos
+    if len(digitos) == 9 and digitos[0] == '9':
+        return '56' + digitos
+    if len(digitos) == 8:
+        return '569' + digitos
+    return ''
+
+
+@register.filter
+def tel(telefono):
+    """Valor para un enlace tel: (solo dígitos y +)."""
+    return ''.join(c for c in str(telefono or '') if c.isdigit() or c == '+')
 
 
 @register.filter

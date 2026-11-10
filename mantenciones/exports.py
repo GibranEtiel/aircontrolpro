@@ -37,18 +37,12 @@ EQUIPO = ParagraphStyle('inf_equipo', parent=TXT, fontName='Helvetica-Bold', fon
                         spaceBefore=6, spaceAfter=6)
 ACTIV = ParagraphStyle('inf_activ', parent=TXT, leftIndent=12)
 CAJA = ParagraphStyle('inf_caja', parent=TXT, fontSize=9.5)
+PIE_FOTO = ParagraphStyle('inf_pie_foto', parent=TXT_C, fontSize=8, leading=9.5, textColor=colors.HexColor('#444444'))
 BULLET = '<font name="ZapfDingbats" size="5">n</font>&nbsp;&nbsp;'  # cuadrito ▪ del informe original
 
 
 def _p(texto_, estilo=TXT):
     return Paragraph(escape(str(texto_)), estilo)
-
-
-def _num(valor, unidad=''):
-    if valor is None:
-        return '-'
-    limpio = format(Decimal(valor).normalize(), 'f')
-    return f'{limpio}{unidad}'
 
 
 def _foto(foto, caja_w, caja_h):
@@ -67,9 +61,13 @@ def _foto(foto, caja_w, caja_h):
 
 
 def _grilla_fotos(fotos, ancho):
-    """Fotos en 2 columnas con celdas enmarcadas, como en el informe original."""
-    por_fila, alto = 2, 50 * mm
-    celdas = [_foto(f, ancho / por_fila - 4 * mm, alto - 4 * mm) for f in fotos]
+    """Fotos en 2 columnas con celdas enmarcadas y el paso al pie de cada una (1 · Aplicación del líquido…)."""
+    por_fila, alto, pie = 2, 58 * mm, 8 * mm
+    celdas = []
+    for f in fotos:
+        imagen = _foto(f, ancho / por_fila - 4 * mm, alto - pie - 4 * mm)
+        celdas.append([imagen, Paragraph(escape(f.titulo), PIE_FOTO)] if imagen != '' else
+                      [Paragraph(escape(f.titulo), PIE_FOTO)])
     if not celdas:
         return _p('Sin fotografías.')
     while len(celdas) % por_fila:
@@ -88,6 +86,7 @@ def _bloque_equipo(eq, ancho):
         obs = f'<font color="{ROJO}">{escape(alerta)}</font>' + (f', {escape(extra)}' if extra else '')
     else:
         obs = escape(extra)
+    lineas_obs = [Paragraph(f'{BULLET}Observaciones: ' + obs, TXT)] if (alerta or extra) else []
     texto_equipo = [
         Paragraph(escape(a.etiqueta), EQUIPO),
         Paragraph(f'{BULLET}Marca / Modelo: ' + escape(a.marca_modelo), TXT),
@@ -95,20 +94,18 @@ def _bloque_equipo(eq, ancho):
         Paragraph(f'{BULLET}Tipo de mantenimiento: ' + escape(eq.get_tipo_mantenimiento_display()), TXT),
         Paragraph(f'{BULLET}Actividades realizadas:', TXT),
         *[Paragraph('- ' + escape(t), ACTIV) for t in eq.tareas_labels],
-        Paragraph(f'{BULLET}Observaciones: ' + obs, TXT),
+        *lineas_obs,
     ]
-    medidas = Table([
-        ['Presión de funcionamiento', _num(eq.presion, ' PSI')],
-        ['Consumo eléctrico total', _num(eq.consumo_total, ' A')],
-        ['Consumo ventilador', _num(eq.consumo_ventilador, ' A')],
-        [f'Temperatura de inyección ({eq.get_modo_display().upper()})', _num(eq.temp_inyeccion, '°C')],
-    ], colWidths=[ancho * .45, ancho * .37], hAlign='LEFT')
-    medidas.setStyle(TableStyle([('GRID', (0, 0), (-1, -1), 0.5, GRIS_LINEA), ('FONTSIZE', (0, 0), (-1, -1), 9.5),
-                                 ('TOPPADDING', (0, 0), (-1, -1), 2), ('BOTTOMPADDING', (0, 0), (-1, -1), 2)]))
     # Como en el original: una página con los datos y otra con las fotos y mediciones.
-    return [KeepTogether(texto_equipo), PageBreak(), Paragraph('Fotografías del equipo:', TXT),
-            Spacer(1, 2 * mm), _grilla_fotos(list(eq.fotos.all()), ancho), Spacer(1, 4 * mm),
-            KeepTogether([medidas])]
+    bloque = [KeepTogether(texto_equipo), PageBreak(), Paragraph('Fotografías del equipo:', TXT),
+              Spacer(1, 2 * mm), _grilla_fotos(eq.fotos_ordenadas, ancho)]
+    mediciones = eq.mediciones  # solo las que el técnico anotó
+    if mediciones:
+        medidas = Table([[n, v] for n, v in mediciones], colWidths=[ancho * .45, ancho * .37], hAlign='LEFT')
+        medidas.setStyle(TableStyle([('GRID', (0, 0), (-1, -1), 0.5, GRIS_LINEA), ('FONTSIZE', (0, 0), (-1, -1), 9.5),
+                                     ('TOPPADDING', (0, 0), (-1, -1), 2), ('BOTTOMPADDING', (0, 0), (-1, -1), 2)]))
+        bloque += [Spacer(1, 4 * mm), KeepTogether([medidas])]
+    return bloque
 
 
 def _cabecera(equipos):
@@ -187,7 +184,7 @@ def equipos_a_excel(nombre, titulo, equipos, fecha_texto, generado_por):
         ('N° de OTs', cab['ots']), ('Fecha', fecha_texto), ('Cliente', cab['clientes']),
         ('A.t', cab['atencion']), ('Ubicación', cab['ubicaciones']), ('Generó', generado_por),
         ('Responsable técnico', cab['tecnicos']), ('Equipos intervenidos', len(equipos)),
-        ('Equipos fuera de norma (R-22)', sum(1 for e in equipos if e.activo.fuera_de_norma)),
+        ('Equipos fuera de norma', sum(1 for e in equipos if e.fuera_de_norma)),
     ]
     filas = []
     for e in equipos:
@@ -197,12 +194,12 @@ def equipos_a_excel(nombre, titulo, equipos, fecha_texto, generado_por):
             a.numero_equipo or a.codigo, a.marca_modelo, a.ubicacion_exacta, e.get_tipo_mantenimiento_display(),
             '; '.join(e.tareas_labels), ' · '.join(x for x in (alerta, extra) if x), e.presion, e.consumo_total,
             e.consumo_ventilador, e.temp_inyeccion, e.get_modo_display(), e.informe.orden.numero,
-            str(e.informe.tecnico or ''), e.fecha, e.fotos.count()])
+            str(e.informe.tecnico or ''), e.fecha, e.fotos.count(), e.pendientes_texto or '—'])
     columnas = [Col('N° equipo'), Col('Marca / modelo'), Col('Ubicación exacta'), Col('Tipo de mantenimiento'),
                 Col('Actividades realizadas'), Col('Observaciones'), Col('Presión (PSI)', 'num'),
                 Col('Consumo total (A)', 'num'), Col('Consumo ventilador (A)', 'num'),
                 Col('T° inyección (°C)', 'num'), Col('Modo'), Col('N° OT'), Col('Técnico'),
-                Col('Fecha', 'fechahora'), Col('Fotos')]
+                Col('Fecha', 'fechahora'), Col('Fotos'), Col('Fotos pendientes')]
     return excel_response(nombre, [
         {'nombre': 'Resumen', 'titulo': titulo, 'subtitulo': f'Informe técnico de mantenimiento · {fecha_texto}',
          'columnas': [Col('Campo'), Col('Valor')], 'filas': [list(r) for r in resumen]},

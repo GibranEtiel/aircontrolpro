@@ -2,5 +2,9 @@ Django>=6.1,<6.2
 Pillow>=11
 openpyxl>=3.1
 reportlab>=4.2
-# Para usar PostgreSQL en producción (variables DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT):
+whitenoise>=6.7
+# Conector MySQL/MariaDB (cPanel). PyMySQL se instala sin compilar; si el servidor tiene
+# mysqlclient compilado, el proyecto lo usa primero.
+PyMySQL>=1.1
+# Para PostgreSQL en vez de MySQL (DB_ENGINE=postgresql):
 # psycopg[binary]>=3.2

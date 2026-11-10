@@ -37,13 +37,13 @@
   <div class="row g-3 mb-3">
     <div class="col-6 col-lg-3"><div class="card kpi"><div class="card-body"><div class="valor">{{ equipos|length }}</div><div class="etiqueta">Equipos intervenidos en {{ mes_nombre }}</div></div></div></div>
     <div class="col-6 col-lg-3"><div class="card kpi"><div class="card-body"><div class="valor">{{ resumen.ordenes }}</div><div class="etiqueta">Órdenes de trabajo</div></div></div></div>
-    <div class="col-6 col-lg-3"><div class="card kpi rojo"><div class="card-body"><div class="valor">{{ resumen.fuera_norma }}</div><div class="etiqueta">Fuera de norma (R-22)</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card kpi rojo"><div class="card-body"><div class="valor">{{ resumen.fuera_norma }}</div><div class="etiqueta">Fuera de norma</div></div></div></div>
     <div class="col-6 col-lg-3"><div class="card kpi verde"><div class="card-body"><div class="valor">{{ resumen.fotos }}</div><div class="etiqueta">Fotografías</div></div></div></div>
   </div>
   {% if sin_revisar > 0 %}
     <div class="alert alert-warning">Hay {{ sin_revisar }} equipo(s) terminado(s) en informes que el técnico aún no envía a revisión; no están incluidos.</div>
   {% endif %}
-  <div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+  <div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0 tabla-movil">
     <thead><tr><th>Equipo</th><th>Marca / modelo</th><th>Ubicación exacta</th><th>Tipo</th><th>Observaciones</th><th>OT</th><th>Fecha</th><th>Informe</th><th></th></tr></thead>
     <tbody>
     {% for e in equipos %}
@@ -51,7 +51,7 @@
         <td><strong>{{ e.activo.numero_equipo|default:e.activo.codigo }}</strong></td>
         <td>{{ e.activo.marca_modelo }}</td><td>{{ e.activo.ubicacion_exacta|default:"—" }}</td>
         <td>{{ e.get_tipo_mantenimiento_display }}</td>
-        <td>{% if e.activo.fuera_de_norma %}<span class="badge text-bg-danger">R-22</span> {% endif %}{{ e.observaciones|default:"—"|truncatechars:60 }}</td>
+        <td>{% if e.fuera_de_norma %}<span class="badge text-bg-danger">Fuera de norma</span> {% endif %}{{ e.observaciones|default:"—"|truncatechars:60 }}</td>
         <td>{{ e.informe.orden.numero }}</td><td>{{ e.fecha|date:"d/m/Y" }}</td>
         <td><span class="badge text-bg-{{ e.informe.estado|badge }}">{{ e.informe.get_estado_display }}</span></td>
         <td class="text-end"><a class="btn btn-sm btn-outline-danger" href="{% url 'equipo_pdf' e.pk %}" title="Ficha PDF"><i class="bi bi-file-earmark-pdf"></i></a></td>

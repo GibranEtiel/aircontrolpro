@@ -1,29 +1,52 @@
 {% extends 'base.html' %}
 {% load static ui %}
 {% block title %}Mi jornada{% endblock %}
+{% block head %}<link href="{% static 'css/dashboard.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div><h1>Hola, {{ user.first_name|default:user.username }}</h1>
-    <div class="text-body-secondary">{{ hoy|date:"l j \d\e F" }}</div></div>
-  <a href="{% url 'informe_nuevo' %}" class="btn btn-info"><i class="bi bi-plus-circle"></i> Nuevo informe</a>
-</div>
+<section class="hero-dash reveal">
+  <img class="hero-marca" src="{% static 'img/mark.png' %}" alt="">
+  <div class="hero-txt">
+    <span class="eyebrow eyebrow-claro">Mi jornada</span>
+    <h1>Hola, <span class="acento">{{ user.first_name|default:user.username }}</span></h1>
+    <p>{{ hoy|date:"l j \d\e F"|capfirst }}</p>
+    <div class="hero-chips">
+      <span class="hchip {% if en_proceso|length %}hot{% endif %}"><i class="bi bi-play-circle-fill"></i><b data-count="{{ en_proceso|length }}">{{ en_proceso|length }}</b> en proceso</span>
+      <span class="hchip"><i class="bi bi-clipboard2-check"></i><b data-count="{{ pendientes|length }}">{{ pendientes|length }}</b> por iniciar</span>
+      <span class="hchip"><i class="bi bi-hourglass-split"></i><b data-count="{{ en_revision }}">{{ en_revision }}</b> en revisión</span>
+      <span class="hchip"><i class="bi bi-check2-circle"></i><b data-count="{{ finalizadas_mes }}">{{ finalizadas_mes }}</b> finalizadas este mes</span>
+      {% if fotos_pendientes %}<a class="hchip hot" href="#fotos-pendientes"><i class="bi bi-camera-fill"></i><b data-count="{{ fotos_pendientes|length }}">{{ fotos_pendientes|length }}</b> equipo{{ fotos_pendientes|length|pluralize }} con fotos pendientes</a>{% endif %}
+    </div>
+  </div>
+  <div class="hero-acciones"><a href="{% url 'informe_nuevo' %}" class="btn btn-info"><i class="bi bi-plus-circle"></i> Nuevo informe</a></div>
+</section>
 
-<div class="row g-3 mb-4">
-  <div class="col-4"><div class="card kpi"><div class="card-body"><div class="valor">{{ en_proceso|length }}</div><div class="etiqueta">En proceso</div></div></div></div>
-  <div class="col-4"><div class="card kpi ambar"><div class="card-body"><div class="valor">{{ en_revision }}</div><div class="etiqueta">En revisión</div></div></div></div>
-  <div class="col-4"><div class="card kpi verde"><div class="card-body"><div class="valor">{{ finalizadas_mes }}</div><div class="etiqueta">Finalizadas este mes</div></div></div></div>
+{% if fotos_pendientes %}
+<div class="card aviso-llamar mb-4" id="fotos-pendientes">
+  <div class="card-header"><i class="bi bi-camera-fill"></i> Fotos pendientes <span class="badge text-bg-danger">{{ fotos_pendientes|length }}</span></div>
+  <div class="list-group list-group-flush">
+    {% for e in fotos_pendientes %}
+      <a class="list-group-item list-group-item-action" href="{% url 'informe_editar' e.informe_id %}#eq-{{ e.pk }}">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <span><strong>{{ e.activo.etiqueta }}</strong> · {{ e.informe.orden.cliente }} · OT {{ e.informe.orden.numero }}<br>
+            {% for p in e.pasos_pendientes %}<span class="faltan-chip">{{ p.numero }} · {{ p.nombre }}</span>{% endfor %}</span>
+          <span class="btn btn-sm btn-info flex-shrink-0"><i class="bi bi-camera"></i> Agregar</span>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
 </div>
+{% endif %}
 
 {% if en_proceso %}
 <h2 class="h5 mb-3">Trabajos en curso</h2>
 <div class="row g-3 mb-4">
   {% for o in en_proceso %}
-  <div class="col-md-6"><div class="card border-info"><div class="card-body">
+  <div class="col-md-6"><div class="card border-info orden-card"><div class="card-body">
     <div class="d-flex justify-content-between"><strong>{{ o.numero }}</strong><span class="badge text-bg-info">En proceso</span></div>
     <div>{{ o.titulo }}</div>
-    <div class="text-body-secondary small mb-3"><i class="bi bi-geo-alt"></i> {{ o.cliente }} · {{ o.ubicacion.nombre }}</div>
-    <form method="post" action="{% url 'orden_iniciar' o.pk %}" class="js-iniciar">{% csrf_token %}
-      <input type="hidden" name="lat"><input type="hidden" name="lng"><input type="hidden" name="precision">
+    <div class="text-body-secondary small mb-2"><i class="bi bi-geo-alt"></i> {{ o.cliente }} · {{ o.ubicacion.nombre }}</div>
+    {% include 'partials/equipos_chips.html' with orden=o %}
+    <form method="post" action="{% url 'orden_iniciar' o.pk %}" class="mt-2">{% csrf_token %}
       <button class="btn btn-info w-100"><i class="bi bi-pencil-square"></i> Continuar informe</button>
     </form>
   </div></div></div>
@@ -34,16 +57,18 @@
 <h2 class="h5 mb-3">Órdenes por iniciar</h2>
 <div class="row g-3">
   {% for o in pendientes %}
-  <div class="col-md-6"><div class="card"><div class="card-body">
+  <div class="col-md-6"><div class="card orden-card {% if o.fecha_programada < hoy %}atrasada{% endif %}"><div class="card-body">
     <div class="d-flex justify-content-between"><strong>{{ o.numero }}</strong>
-      <span class="text-body-secondary small">{{ o.fecha_programada|date:"d/m/Y" }}</span></div>
+      <span class="small {% if o.fecha_programada < hoy %}text-danger fw-bold{% else %}text-body-secondary{% endif %}">
+        {% if o.fecha_programada == hoy %}Hoy{% elif o.fecha_programada < hoy %}Atrasada · {{ o.fecha_programada|date:"d/m/Y" }}{% else %}{{ o.fecha_programada|date:"d/m/Y" }}{% endif %}</span></div>
     <div>{{ o.titulo }}</div>
-    <div class="text-body-secondary small">{{ o.get_tipo_display }} · {{ o.activos.count }} equipo(s)</div>
-    <div class="text-body-secondary small mb-3"><i class="bi bi-geo-alt"></i> {{ o.cliente }} · {{ o.ubicacion.nombre }}{% if o.ubicacion.direccion %} · {{ o.ubicacion.direccion }}{% endif %}</div>
-    <div class="d-flex gap-2">
+    <div class="text-body-secondary small">{{ o.get_tipo_display }}{% if o.prioridad == 'alta' %} · <span class="text-danger fw-bold">Prioridad alta</span>{% endif %}</div>
+    <div class="text-body-secondary small mb-2"><i class="bi bi-geo-alt"></i> {{ o.cliente }} · {{ o.ubicacion.nombre }}{% if o.ubicacion.direccion %} · {{ o.ubicacion.direccion }}{% endif %}</div>
+    {% if o.descripcion %}<div class="small mb-2"><i class="bi bi-card-text"></i> {{ o.descripcion|truncatechars:140 }}</div>{% endif %}
+    {% include 'partials/equipos_chips.html' with orden=o %}
+    <div class="d-flex gap-2 mt-2">
       <a class="btn btn-outline-secondary" href="{% url 'orden_detalle' o.pk %}">Detalle</a>
-      <form method="post" action="{% url 'orden_iniciar' o.pk %}" class="js-iniciar flex-grow-1">{% csrf_token %}
-        <input type="hidden" name="lat"><input type="hidden" name="lng"><input type="hidden" name="precision">
+      <form method="post" action="{% url 'orden_iniciar' o.pk %}" class="flex-grow-1">{% csrf_token %}
         <button class="btn btn-info w-100"><i class="bi bi-play-fill"></i> Iniciar trabajo</button>
       </form>
     </div>
@@ -54,6 +79,3 @@
 </div>
 {% endblock %}
 
-{% block scripts %}
-<script src="{% static 'js/gps.js' %}"></script>
-{% endblock %}

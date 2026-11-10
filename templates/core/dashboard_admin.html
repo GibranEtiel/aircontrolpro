@@ -1,117 +1,173 @@
 {% extends 'base.html' %}
-{% load ui %}
+{% load static ui %}
 {% block title %}Dashboard{% endblock %}
+{% block head %}<link href="{% static 'css/dashboard.css' %}" rel="stylesheet">{% endblock %}
 {% block content %}
-<div class="page-head">
-  <h1>Dashboard</h1>
-  <form method="get" class="d-flex gap-2">
-    <select name="anio" class="form-select form-select-sm" onchange="this.form.submit()">
-      {% for a in anios %}<option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>{% endfor %}
-    </select>
-    <select name="cliente" class="form-select form-select-sm" onchange="this.form.submit()">
-      <option value="">Todos los clientes</option>
-      {% for c in clientes %}<option value="{{ c.pk }}" {% if c.pk|stringformat:"s" == cliente_id %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}
-    </select>
-    {% include 'partials/exportar.html' %}
-  </form>
+<section class="hero-dash reveal">
+  <img class="hero-marca" src="{% static 'img/mark.png' %}" alt="">
+  <div class="hero-txt">
+    <span class="eyebrow eyebrow-claro">Panel de control</span>
+    <h1>{{ saludo }}, <span class="acento">{{ user.first_name|default:user.username }}</span></h1>
+    <p>{{ hoy|date:"l j \d\e F"|capfirst }} · Así va tu operación</p>
+    <div class="hero-chips">
+      <a class="hchip {% if n_por_llamar %}hot{% endif %}" href="{% url 'cotizaciones' %}?estado=por_llamar"><i class="bi bi-telephone-fill"></i><b data-count="{{ n_por_llamar }}">{{ n_por_llamar }}</b> cotizaciones por llamar</a>
+      <a class="hchip" href="{% url 'ordenes' %}?estado=pendiente"><i class="bi bi-clipboard2-check"></i><b data-count="{{ n_por_iniciar }}">{{ n_por_iniciar }}</b> órdenes por iniciar</a>
+      <a class="hchip" href="{% url 'informes' %}?estado=enviado"><i class="bi bi-file-earmark-check"></i><b data-count="{{ n_por_revisar }}">{{ n_por_revisar }}</b> informes por revisar</a>
+    </div>
+  </div>
+  <div class="hero-acciones">
+    <a href="{% url 'cotizacion_nueva' %}" class="btn btn-info"><i class="bi bi-plus-lg"></i> Nueva cotización</a>
+    <a href="{% url 'orden_nueva' %}" class="btn btn-claro"><i class="bi bi-plus-lg"></i> Nueva orden</a>
+  </div>
+</section>
+
+{% if cot_por_llamar %}
+<div class="card aviso-llamar mb-3 reveal">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-telephone-outbound-fill"></i> Cotizaciones por llamar <span class="badge text-bg-danger">{{ cot_por_llamar|length }}</span></span>
+    <a class="small" href="{% url 'cotizaciones' %}?estado=por_llamar">Ver todas</a>
+  </div>
+  <div class="table-responsive"><table class="table table-sm align-middle mb-0 tabla-movil">
+    <thead><tr><th>Cotización</th><th>Cliente y contacto</th><th>Teléfono</th><th>Sin respuesta</th><th class="text-end">Neto</th><th></th></tr></thead>
+    <tbody>{% for c in cot_por_llamar %}
+      <tr>
+        <td class="text-nowrap"><a href="{{ c.get_absolute_url }}" class="fw-bold">{{ c.numero }}</a><br><small class="text-body-secondary">{{ c.titulo|truncatechars:36 }}</small></td>
+        <td>{{ c.cliente }}<br><small class="text-body-secondary">{{ c.contacto|default:"Sin contacto" }}</small></td>
+        <td class="text-nowrap">{% if c.telefono %}<a class="contacto-link" href="tel:{{ c.telefono|tel }}"><i class="bi bi-telephone-fill"></i> {{ c.telefono }}</a>
+          {% if c.telefono|wa %}<a class="ms-2" href="https://wa.me/{{ c.telefono|wa }}" target="_blank" rel="noopener" title="WhatsApp"><i class="bi bi-whatsapp"></i></a>{% endif %}
+          {% else %}<span class="text-body-secondary">—</span>{% endif %}</td>
+        <td><strong class="text-danger">{{ c.dias_sin_gestion }} días</strong></td>
+        <td class="text-end">{{ c.neto|clp }}</td>
+        <td class="text-end"><a class="btn btn-sm btn-info" href="{{ c.get_absolute_url }}">Gestionar</a></td>
+      </tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<div class="dash" id="dash">
+  <div class="dash-barra reveal">
+    <form method="get" id="dash-filtros" class="d-flex gap-2 flex-wrap align-items-center">
+      <select name="anio" class="form-select form-select-sm" aria-label="Año">
+        {% for a in anios %}<option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>{% endfor %}
+      </select>
+      <select name="cliente" class="form-select form-select-sm" aria-label="Cliente">
+        <option value="">Todos los clientes</option>
+        {% for c in clientes %}<option value="{{ c.pk }}" {% if c.pk|stringformat:"s" == cliente_id %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}
+      </select>
+      <noscript><button class="btn btn-sm btn-outline-secondary">Aplicar</button></noscript>
+    </form>
+    <div class="d-flex gap-2 align-items-center">
+      <span class="dash-estado text-body-secondary small" id="dash-estado" aria-live="polite"></span>
+      {% include 'partials/exportar.html' %}
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-xl-3 reveal"><button type="button" class="kpi-tile activo" data-metrica="ingresos" aria-pressed="true">
+      <span class="kpi-top"><span class="kpi-icono azul"><i class="bi bi-graph-up-arrow"></i></span><span class="kpi-delta" data-delta></span></span>
+      <span class="kpi-valor" data-valor="{{ kpis.ingresos }}">{{ kpis.ingresos|clp }}</span>
+      <span class="kpi-label">Ingresos netos {{ anio }}</span>
+      <span class="kpi-sub" data-sub>{% if kpis.ingresos_mes is not None %}Este mes: {{ kpis.ingresos_mes|clp }}{% endif %}</span>
+      <span class="kpi-spark" data-spark></span></button></div>
+    <div class="col-6 col-xl-3 reveal"><button type="button" class="kpi-tile" data-metrica="costos" aria-pressed="false">
+      <span class="kpi-top"><span class="kpi-icono rojo"><i class="bi bi-wallet2"></i></span><span class="kpi-delta" data-delta></span></span>
+      <span class="kpi-valor" data-valor="{{ kpis.costos }}">{{ kpis.costos|clp }}</span>
+      <span class="kpi-label">Costos (materiales + mano de obra)</span>
+      <span class="kpi-sub" data-sub></span>
+      <span class="kpi-spark" data-spark></span></button></div>
+    <div class="col-6 col-xl-3 reveal"><button type="button" class="kpi-tile" data-metrica="utilidad" aria-pressed="false">
+      <span class="kpi-top"><span class="kpi-icono verde"><i class="bi bi-piggy-bank"></i></span><span class="kpi-delta" data-delta></span></span>
+      <span class="kpi-valor" data-valor="{{ kpis.utilidad }}">{{ kpis.utilidad|clp }}</span>
+      <span class="kpi-label">Utilidad · margen <span data-margen>{{ kpis.margen }}</span>%</span>
+      <span class="kpi-sub" data-sub>{% if kpis.utilidad_mes is not None %}Este mes: {{ kpis.utilidad_mes|clp }}{% endif %}</span>
+      <span class="kpi-spark" data-spark></span></button></div>
+    <div class="col-6 col-xl-3 reveal"><button type="button" class="kpi-tile" data-metrica="por_cobrar" aria-pressed="false">
+      <span class="kpi-top"><span class="kpi-icono ambar"><i class="bi bi-hourglass-split"></i></span><span class="kpi-delta"></span></span>
+      <span class="kpi-valor" data-valor="{{ kpis.por_cobrar }}">{{ kpis.por_cobrar|clp }}</span>
+      <span class="kpi-label">Por cobrar · <span data-cobrar-n>{{ kpis.por_cobrar_n }}</span> OT</span>
+      <span class="kpi-sub">Cotizaciones pendientes: {{ cot_pendientes_n }} · {{ cot_pendientes_monto|clp }}</span>
+      <span class="kpi-spark" data-spark></span></button></div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-xl-8 reveal"><div class="card h-100 panel">
+      <div class="panel-cab">
+        <div><div class="panel-titulo" id="graf-titulo">Ingresos netos</div><div class="panel-sub" id="graf-sub"></div></div>
+        <div class="d-flex gap-2 flex-wrap">
+          <div class="seg" role="group" aria-label="Período" id="seg-rango">
+            <button type="button" data-rango="anio" class="on">Año</button><button type="button" data-rango="dias">30 días</button></div>
+          <div class="seg" role="group" aria-label="Tipo de gráfico" id="seg-tipo">
+            <button type="button" data-tipo="bar" class="on" title="Barras"><i class="bi bi-bar-chart-fill"></i></button><button type="button" data-tipo="line" title="Línea"><i class="bi bi-graph-up"></i></button></div>
+          <button type="button" class="chip-toggle" id="btn-comparar" aria-pressed="false"><i class="bi bi-layers"></i> Año anterior</button>
+        </div>
+      </div>
+      <div class="chart-box grande"><canvas id="chPrincipal" role="img" aria-label="Gráfico de evolución"></canvas></div>
+    </div></div>
+
+    <div class="col-xl-4 reveal"><div class="card h-100 panel">
+      <div class="panel-cab"><div><div class="panel-titulo">Órdenes por estado</div><div class="panel-sub">Cumplimiento <b data-cumplimiento>{{ kpis.cumplimiento }}</b>%</div></div></div>
+      <div class="dona-wrap"><canvas id="chEstados" role="img" aria-label="Órdenes por estado"></canvas><div class="dona-centro"><b id="dona-total">0</b><span>órdenes</span></div></div>
+      <ul class="leyenda" id="estados-lista"></ul>
+    </div></div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-5 reveal"><div class="card h-100 panel">
+      <div class="panel-cab"><div><div class="panel-titulo">Embudo de cotizaciones</div><div class="panel-sub" id="embudo-sub"></div></div>
+        <a class="small fw-bold" href="{% url 'cotizaciones' %}?vista=tablero">Abrir tablero <i class="bi bi-arrow-right"></i></a></div>
+      <div id="embudo" class="embudo"></div>
+      <div class="embudo-pie" id="embudo-pie"></div>
+    </div></div>
+    <div class="col-lg-7 reveal"><div class="card h-100 panel">
+      <div class="panel-cab"><div><div class="panel-titulo">Agenda · próximos 7 días</div><div class="panel-sub">Órdenes por iniciar o en curso, atrasadas primero</div></div>
+        <a class="small fw-bold" href="{% url 'ordenes' %}">Ver órdenes <i class="bi bi-arrow-right"></i></a></div>
+      <ul class="agenda" id="agenda"></ul>
+    </div></div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-4 reveal"><div class="card h-100 panel">
+      <div class="panel-cab"><div><div class="panel-titulo">Ingresos por cliente</div><div class="panel-sub">Toca uno para filtrar todo el panel</div></div></div>
+      <ul class="barras" id="clientes-lista"></ul>
+    </div></div>
+    <div class="col-lg-4 reveal"><div class="card h-100 panel">
+      <div class="panel-cab"><div><div class="panel-titulo">Rendimiento por técnico</div><div class="panel-sub">Órdenes finalizadas {{ anio }}</div></div></div>
+      <ul class="barras tecnicos" id="tecnicos-lista"></ul>
+    </div></div>
+    <div class="col-lg-4 reveal"><div class="card h-100 panel">
+      <div class="panel-cab"><div><div class="panel-titulo">Equipos</div><div class="panel-sub" id="equipos-sub"></div></div>
+        <a class="small fw-bold" href="{% url 'activos' %}">Ver <i class="bi bi-arrow-right"></i></a></div>
+      <div class="dona-wrap chica"><canvas id="chEquipos" role="img" aria-label="Condición de los equipos"></canvas><div class="dona-centro"><b id="equipos-total">0</b><span>activos</span></div></div>
+      <div id="equipos-alerta"></div>
+    </div></div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7 reveal"><div class="card h-100 panel">
+      <div class="panel-cab"><div><div class="panel-titulo">Actividad reciente</div><div class="panel-sub">Lo último que pasó en el portal</div></div></div>
+      <ul class="actividad" id="actividad"></ul>
+    </div></div>
+    <div class="col-lg-5 reveal"><div class="card h-100 panel">
+      <div class="panel-cab"><div><div class="panel-titulo">Informes por revisar</div><div class="panel-sub">Enviados por los técnicos</div></div>
+        <span class="badge text-bg-warning">{{ en_revision|length }}</span></div>
+      <div class="list-group list-group-flush">
+        {% for i in en_revision %}
+          <a class="list-group-item list-group-item-action d-flex justify-content-between" href="{% url 'informe_detalle' i.pk %}">
+            <span>{{ i.orden.numero }} · {{ i.orden.cliente }}<br><small class="text-body-secondary">{{ i.tecnico }} · {{ i.termino|date:"d/m/Y H:i" }}</small></span>
+            <i class="bi bi-chevron-right align-self-center"></i>
+          </a>
+        {% empty %}<div class="list-group-item text-body-secondary">No hay informes pendientes de revisión.</div>{% endfor %}
+      </div>
+    </div></div>
+  </div>
 </div>
 
-<div class="row g-3 mb-3">
-  <div class="col-6 col-xl-3"><div class="card kpi verde"><div class="card-body d-flex justify-content-between">
-    <div><div class="valor">{{ kpis.ingresos|clp }}</div><div class="etiqueta">Ingresos netos {{ anio }}</div>
-      {% if kpis.ingresos_mes is not None %}<div class="small text-body-secondary">Este mes: {{ kpis.ingresos_mes|clp }}</div>{% endif %}</div>
-    <div class="icono"><i class="bi bi-graph-up-arrow"></i></div></div></div></div>
-  <div class="col-6 col-xl-3"><div class="card kpi rojo"><div class="card-body d-flex justify-content-between">
-    <div><div class="valor">{{ kpis.costos|clp }}</div><div class="etiqueta">Costos (materiales + mano de obra)</div></div>
-    <div class="icono"><i class="bi bi-wallet2"></i></div></div></div></div>
-  <div class="col-6 col-xl-3"><div class="card kpi"><div class="card-body d-flex justify-content-between">
-    <div><div class="valor">{{ kpis.utilidad|clp }}</div><div class="etiqueta">Utilidad · margen {{ kpis.margen }}%</div>
-      {% if kpis.utilidad_mes is not None %}<div class="small text-body-secondary">Este mes: {{ kpis.utilidad_mes|clp }}</div>{% endif %}</div>
-    <div class="icono"><i class="bi bi-piggy-bank"></i></div></div></div></div>
-  <div class="col-6 col-xl-3"><div class="card kpi ambar"><div class="card-body d-flex justify-content-between">
-    <div><div class="valor">{{ kpis.por_cobrar|clp }}</div><div class="etiqueta">Por cobrar · {{ kpis.por_cobrar_n }} OT</div>
-      <a class="small" href="{% url 'finanzas' %}?pago=pendiente">Ver detalle</a></div>
-    <div class="icono"><i class="bi bi-hourglass-split"></i></div></div></div></div>
-</div>
-
-<div class="row g-3 mb-3">
-  <div class="col-lg-8"><div class="card h-100">
-    <div class="card-header">Ingresos, costos y utilidad por mes</div>
-    <div class="card-body"><div class="chart-box"><canvas id="chMeses"></canvas></div></div></div></div>
-  <div class="col-lg-4"><div class="card h-100">
-    <div class="card-header">Órdenes por estado · cumplimiento {{ kpis.cumplimiento }}%</div>
-    <div class="card-body"><div class="chart-box"><canvas id="chEstados"></canvas></div></div></div></div>
-</div>
-
-<div class="row g-3 mb-3">
-  <div class="col-lg-6"><div class="card h-100">
-    <div class="card-header">Ingresos por cliente</div>
-    <div class="card-body"><div class="chart-box"><canvas id="chClientes"></canvas></div></div></div></div>
-  <div class="col-lg-6"><div class="card h-100">
-    <div class="card-header">Tipo de trabajo</div>
-    <div class="card-body"><div class="chart-box"><canvas id="chTipos"></canvas></div></div></div></div>
-</div>
-
-<div class="row g-3">
-  <div class="col-lg-6"><div class="card h-100">
-    <div class="card-header">Rendimiento por técnico ({{ anio }})</div>
-    <div class="table-responsive"><table class="table table-sm align-middle mb-0">
-      <thead><tr><th>Técnico</th><th class="text-end">OT</th><th class="text-end">Ingresos</th><th class="text-end">Utilidad</th></tr></thead>
-      <tbody>{% for t in por_tecnico %}
-        <tr><td>{{ t.nombre }}</td><td class="text-end">{{ t.n }}</td><td class="text-end">{{ t.ing|clp }}</td><td class="text-end">{{ t.utilidad|clp }}</td></tr>
-      {% empty %}<tr><td colspan="4" class="text-center text-body-secondary py-3">Sin órdenes finalizadas.</td></tr>{% endfor %}</tbody>
-    </table></div></div></div>
-  <div class="col-lg-6"><div class="card h-100">
-    <div class="card-header d-flex justify-content-between">Informes por revisar <span class="badge text-bg-warning">{{ en_revision|length }}</span></div>
-    <div class="list-group list-group-flush">
-      {% for i in en_revision %}
-        <a class="list-group-item list-group-item-action d-flex justify-content-between" href="{% url 'informe_detalle' i.pk %}">
-          <span>{{ i.orden.numero }} · {{ i.orden.cliente }}<br><small class="text-body-secondary">{{ i.tecnico }} · {{ i.termino|date:"d/m/Y H:i" }}</small></span>
-          <i class="bi bi-chevron-right align-self-center"></i>
-        </a>
-      {% empty %}<div class="list-group-item text-body-secondary">No hay informes pendientes de revisión.</div>{% endfor %}
-    </div></div></div>
-</div>
-
-{{ charts|json_script:"chartData" }}
+{{ datos|json_script:"dash-data" }}
+<div id="dash-config" hidden data-url-datos="{% url 'dashboard_datos' %}" data-url-finanzas="{% url 'finanzas' %}"></div>
 {% endblock %}
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script>
-const d = JSON.parse(document.getElementById('chartData').textContent);
-const clp = v => '$' + Number(v).toLocaleString('es-CL');
-Chart.defaults.color = '#9fb0cc';
-Chart.defaults.borderColor = '#1f2b45';
-const colores = ['#22b8e8', '#25c26e', '#ffc107', '#ff6b7a', '#8e7cff', '#5f6e8c'];
-
-new Chart(document.getElementById('chMeses'), {
-  data: {
-    labels: d.meses,
-    datasets: [
-      {type: 'bar', label: 'Ingresos', data: d.ingresos, backgroundColor: '#22b8e8'},
-      {type: 'bar', label: 'Costos', data: d.costos, backgroundColor: '#ff6b7a'},
-      {type: 'line', label: 'Utilidad', data: d.utilidad, borderColor: '#25c26e', backgroundColor: '#25c26e', tension: .3},
-    ]
-  },
-  options: {maintainAspectRatio: false, scales: {y: {ticks: {callback: clp}}},
-            plugins: {tooltip: {callbacks: {label: c => `${c.dataset.label}: ${clp(c.parsed.y)}`}}}}
-});
-new Chart(document.getElementById('chEstados'), {
-  type: 'doughnut',
-  data: {labels: d.estados.labels, datasets: [{data: d.estados.data, backgroundColor: ['#6c757d', '#22b8e8', '#ffc107', '#25c26e', '#ff6b7a'], borderWidth: 0}]},
-  options: {maintainAspectRatio: false, cutout: '62%', plugins: {legend: {position: 'bottom'}}}
-});
-new Chart(document.getElementById('chClientes'), {
-  type: 'bar',
-  data: {labels: d.clientes.labels, datasets: [{label: 'Ingresos', data: d.clientes.data, backgroundColor: '#22b8e8'}]},
-  options: {indexAxis: 'y', maintainAspectRatio: false, plugins: {legend: {display: false},
-            tooltip: {callbacks: {label: c => clp(c.parsed.x)}}}, scales: {x: {ticks: {callback: clp}}}}
-});
-new Chart(document.getElementById('chTipos'), {
-  type: 'doughnut',
-  data: {labels: d.tipos.labels, datasets: [{data: d.tipos.data, backgroundColor: colores, borderWidth: 0}]},
-  options: {maintainAspectRatio: false, cutout: '62%', plugins: {legend: {position: 'bottom'}}}
-});
-</script>
+<script src="{% static 'js/dashboard.js' %}"></script>
 {% endblock %}

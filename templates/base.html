@@ -1,9 +1,14 @@
 {% load static %}<!doctype html>
-<html lang="es" data-bs-theme="dark">
+<html lang="es" data-bs-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#071f33">
   <title>{% block title %}Air Control Pro{% endblock %} · Air Control Pro</title>
+  <link rel="icon" href="{% static 'img/mark.png' %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Newsreader:ital,wght@1,500&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="{% static 'css/app.css' %}" rel="stylesheet">
@@ -12,13 +17,14 @@
 <body>
 {% with url_name=request.resolver_match.url_name %}
 <aside class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="sidebar">
-  <div class="brand">
-    <i class="bi bi-snow2"></i>
-    <div><strong>Air Control</strong> <span>Pro</span></div>
-  </div>
+  <a class="brand" href="{% url 'home' %}">
+    <img src="{% static 'img/mark.png' %}" alt="">
+    <div><strong>AirControl <b>Pro</b></strong><small>Climatización y refrigeración</small></div>
+  </a>
   <nav class="nav flex-column">
     {% if user.es_admin %}
       {% include 'partials/nav_item.html' with name='home' icon='bi-speedometer2' label='Dashboard' match='home' %}
+      {% include 'partials/nav_item.html' with name='cotizaciones' icon='bi-receipt' label='Cotizaciones' match='cotizaciones cotizacion_nueva cotizacion_detalle cotizacion_editar' badge=cotizaciones_por_llamar %}
       {% include 'partials/nav_item.html' with name='ordenes' icon='bi-clipboard2-check' label='Órdenes de trabajo' match='ordenes orden_detalle orden_nueva orden_editar' %}
       {% include 'partials/nav_item.html' with name='informes' icon='bi-file-earmark-text' label='Informes técnicos' match='informes informe_detalle informe_editar' %}
       {% include 'partials/nav_item.html' with name='informe_mensual' icon='bi-calendar-month' label='Informe del mes' match='informe_mensual' %}
@@ -63,7 +69,9 @@
     <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-label="Menú">
       <i class="bi bi-list"></i>
     </button>
-    <strong><i class="bi bi-snow2 text-info"></i> Air Control Pro</strong>
+    <img src="{% static 'img/mark.png' %}" alt="">
+    <strong>AirControl <span style="color:var(--acp-red)">Pro</span></strong>
+    {% if cotizaciones_por_llamar %}<a href="{% url 'cotizaciones' %}?estado=por_llamar" class="nav-pill ms-auto"><i class="bi bi-telephone"></i> {{ cotizaciones_por_llamar }}</a>{% endif %}
   </header>
   <main class="p-3 p-lg-4">
     {% for m in messages %}
@@ -75,6 +83,26 @@
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// Tablas "tabla-movil": en el celular cada fila se muestra como tarjeta con el nombre de cada dato.
+document.querySelectorAll('table.tabla-movil').forEach(function (t) {
+  var cab = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) { return th.textContent.trim(); });
+  t.querySelectorAll('tbody tr, tfoot tr').forEach(function (tr) {
+    var col = 0;
+    Array.prototype.forEach.call(tr.children, function (td) {
+      td.dataset.label = td.colSpan > 1 ? '' : (cab[col] || '');
+      if (td.childNodes.length > 1 && td.colSpan === 1) {  // agrupa texto + saltos + enlaces en un solo bloque
+        var celda = document.createElement('div');
+        celda.className = 'celda';
+        while (td.firstChild) celda.appendChild(td.firstChild);
+        td.appendChild(celda);
+      }
+      col += td.colSpan || 1;
+    });
+  });
+});
+</script>
+<script src="{% static 'js/ui.js' %}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
