@@ -17,12 +17,21 @@ def _cargar_env(ruta):
     """Lee un archivo .env sencillo (CLAVE=valor) sin pisar variables ya definidas."""
     if not ruta.is_file():
         return
+    sin_completar = []
     for linea in ruta.read_text(encoding='utf-8').splitlines():
         linea = linea.strip()
         if not linea or linea.startswith('#') or '=' not in linea:
             continue
         clave, valor = linea.split('=', 1)
-        os.environ.setdefault(clave.strip(), valor.strip().strip('"').strip("'"))
+        valor = valor.strip().strip('"').strip("'")
+        if valor.startswith('PEGA_AQUI'):
+            sin_completar.append(clave.strip())
+            continue
+        os.environ.setdefault(clave.strip(), valor)
+    if sin_completar:
+        raise ImproperlyConfigured(
+            f'Faltan datos por completar en {ruta.name}: {", ".join(sin_completar)}. Reemplaza cada «PEGA_AQUI…» '
+            'por el dato real (o borra la línea si esa función no la vas a usar).')
 
 
 _cargar_env(BASE_DIR / '.env')
@@ -53,7 +62,7 @@ if not SECRET_KEY:
 ALLOWED_HOSTS = env_lista('DJANGO_ALLOWED_HOSTS')
 if DEBUG:
     ALLOWED_HOSTS += ['localhost', '127.0.0.1', '[::1]', 'testserver']
-CSRF_TRUSTED_ORIGINS = env_lista('DJANGO_CSRF_TRUSTED_ORIGINS')  # p. ej. https://app.aircontrolpro.cl
+CSRF_TRUSTED_ORIGINS = env_lista('DJANGO_CSRF_TRUSTED_ORIGINS')  # p. ej. https://portal.aircontrolpro.cl
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -171,7 +180,8 @@ STORAGES = {
 
 # Las fotos y firmas se sirven desde Django (core.views.media_protegida) solo a usuarios con permiso.
 MEDIA_URL = 'media/'
-MEDIA_ROOT = Path(env('DJANGO_MEDIA_ROOT')) if env('DJANGO_MEDIA_ROOT') else BASE_DIR / 'media'
+# DJANGO_MEDIA_ROOT acepta «~» (carpeta personal): p. ej. ~/aircontrolpro_media. La carpeta se crea sola.
+MEDIA_ROOT = Path(env('DJANGO_MEDIA_ROOT')).expanduser() if env('DJANGO_MEDIA_ROOT') else BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -192,6 +202,7 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = env_bool('DJANGO_SSL_REDIRECT', False)  # actívalo si cPanel no redirige a HTTPS
     SECURE_HSTS_SECONDS = int(env('DJANGO_HSTS_SECONDS', '0'))  # súbelo (p. ej. 31536000) cuando HTTPS esté estable
 PASSWORD_RESET_TIMEOUT = 60 * 60 * 2  # el enlace del correo para recuperar la contraseña vale 2 horas
+X_FRAME_OPTIONS = 'SAMEORIGIN' if DEBUG else 'DENY'  # en desarrollo se pueden probar páginas en marcos del mismo sitio
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 14  # los técnicos no deben reingresar a cada rato en terreno
 
 # --- Correo (avisos de cotizaciones por llamar) ---------------------------------
@@ -212,6 +223,9 @@ AVISOS_EMAIL = env_lista('AVISOS_EMAIL')
 # --- Cotizaciones ------------------------------------------------------------
 # Una cotización pendiente sin respuesta ni gestión hace más de estos días aparece como «por llamar».
 COTIZACION_DIAS_ALERTA = int(env('COTIZACION_DIAS_ALERTA', '3'))
+# La recuperación de contraseña por correo solo se ofrece si hay un servidor de correo configurado
+# (EMAIL_HOST); en desarrollo se puede probar porque el correo se imprime en la terminal.
+RECUPERAR_CLAVE = bool(env('EMAIL_HOST')) or DEBUG
 # Datos de la empresa para el PDF de la cotización.
 EMPRESA_TELEFONO = env('EMPRESA_TELEFONO', '+56 9 3887 5867')
 EMPRESA_EMAIL = env('EMPRESA_EMAIL', 'contacto@aircontrolpro.cl')

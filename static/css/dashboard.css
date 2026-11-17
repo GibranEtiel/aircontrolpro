@@ -53,7 +53,7 @@
 .kpi-tile:focus-visible { outline: 3px solid rgba(8, 129, 197, .4); outline-offset: 2px; }
 .kpi-tile.activo { border-color: var(--acp-deep); box-shadow: 0 0 0 2px var(--acp-deep), var(--acp-shadow); }
 .kpi-tile.activo::after {
-  content: "En el gráfico"; position: absolute; right: .8rem; bottom: .75rem; font-size: .62rem; font-weight: 800; letter-spacing: .08em;
+  content: "En el gráfico"; position: absolute; right: .8rem; bottom: .75rem; font-size: .7rem; font-weight: 800; letter-spacing: .08em;
   text-transform: uppercase; color: #fff; background: var(--acp-deep); padding: .15rem .55rem; border-radius: 999px;
 }
 .kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: .6rem; }

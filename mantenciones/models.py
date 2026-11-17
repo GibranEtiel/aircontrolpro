@@ -176,6 +176,7 @@ class Informe(models.Model):
     recomendaciones = models.TextField('Recomendaciones', blank=True)
     recibido_por = models.CharField('Recibido por (cliente)', max_length=120, blank=True)
     firma = models.ImageField('Firma del cliente', upload_to='firmas/%Y/%m/', null=True, blank=True)
+    firma_tecnico = models.ImageField('Firma del técnico', upload_to='firmas/%Y/%m/', null=True, blank=True)
 
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)

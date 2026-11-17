@@ -129,6 +129,37 @@ def _cabecera(equipos):
     }
 
 
+def _firmas(equipos, cab, ancho):
+    """Bloque final con las firmas: 'Recibe conforme' (con la firma del cliente si la dibujó en el celular) y el técnico
+    responsable, con su línea para firmar. Como en la hoja del informe en pantalla."""
+    informes = list({e.informe_id: e.informe for e in equipos}.values())
+    informe = informes[0] if len(informes) == 1 else None  # la firma del cliente es de un informe concreto
+
+    def imagen_firma(campo):
+        archivo = getattr(informe, campo) if informe is not None else None
+        if not archivo:
+            return ''
+        try:
+            with PILImage.open(archivo.path) as im:
+                w, h = im.size
+            escala = min(55 * mm / w, 20 * mm / h)
+            return Image(archivo.path, width=w * escala, height=h * escala)
+        except (OSError, ValueError):
+            return ''
+
+    firma, firma_tecnico = imagen_firma('firma'), imagen_firma('firma_tecnico')
+    recibe = 'Recibe conforme' + (f': {informe.recibido_por}' if informe is not None and informe.recibido_por else '')
+    tecnico = f'Técnico: {cab["tecnicos"] or "-"}'
+    t = Table([[firma, '', firma_tecnico], [Paragraph(escape(recibe), TXT_C), '', Paragraph(escape(tecnico), TXT_C)]],
+              colWidths=[ancho * .42, ancho * .16, ancho * .42], rowHeights=[24 * mm, None])
+    t.setStyle(TableStyle([('LINEABOVE', (0, 1), (0, 1), 0.7, colors.black),
+                           ('LINEABOVE', (2, 1), (2, 1), 0.7, colors.black),
+                           ('VALIGN', (0, 0), (-1, 0), 'BOTTOM'), ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+                           ('ALIGN', (2, 0), (2, 0), 'CENTER'),
+                           ('VALIGN', (0, 1), (-1, 1), 'TOP')]))
+    return KeepTogether([Spacer(1, 12 * mm), t])
+
+
 def reporte_pdf(equipos, nombre, fecha_texto, generado_por):
     """PDF con el formato del informe técnico: encabezado y un bloque por equipo."""
     equipos = list(equipos)
@@ -150,21 +181,23 @@ def reporte_pdf(equipos, nombre, fecha_texto, generado_por):
         canvas.drawRightString(A4[0] - 12 * mm, 7 * mm, f'Página {doc.page}')
         canvas.restoreState()
 
-    caja = Table([[Paragraph(f'<b>GENERO</b>: {escape(generado_por)}', CAJA),
-                   Paragraph(f'<b>RESPONSABLE TECNICO</b>: {escape(cab["tecnicos"] or "-")}', CAJA)]],
+    caja = Table([[Paragraph(f'<b>EMITIDO POR</b>: {escape(generado_por)}', CAJA),
+                   Paragraph(f'<b>RESPONSABLE TÉCNICO</b>: {escape(cab["tecnicos"] or "-")}', CAJA)]],
                  colWidths=[ancho * .45, ancho * .55], rowHeights=[13 * mm])
     caja.setStyle(TableStyle([('BOX', (0, 0), (-1, -1), 0.5, GRIS_LINEA), ('VALIGN', (0, 0), (-1, -1), 'TOP')]))
 
     story = [
-        Paragraph('AIRCONTROLPRO CLIMATIZACION', MARCA), caja,
+        Paragraph('AIRCONTROLPRO CLIMATIZACIÓN', MARCA), caja,
         Paragraph('INFORME TÉCNICO DE MANTENIMIENTO DE AIRE ACONDICIONADO', TITULO),
-        _p(f'Fecha: {fecha_texto}'), _p(f'Cliente: {cab["clientes"]}'), _p(f'A.t: {cab["atencion"] or "-"}'),
+        _p(f'Fecha: {fecha_texto}'), _p(f'Cliente: {cab["clientes"]}'), _p(f'Dirigido a: {cab["atencion"] or "-"}'),
         _p(f'Ubicación: {cab["ubicaciones"]}'), Spacer(1, 4 * mm),
     ]
     for i, eq in enumerate(equipos):
         if i:
             story.append(PageBreak())
         story += _bloque_equipo(eq, ancho)
+    if equipos:
+        story.append(_firmas(equipos, cab, ancho))
     if not equipos:
         story.append(_p('No hay equipos intervenidos en este período.'))
 
@@ -182,7 +215,7 @@ def equipos_a_excel(nombre, titulo, equipos, fecha_texto, generado_por):
     cab = _cabecera(equipos)
     resumen = [
         ('N° de OTs', cab['ots']), ('Fecha', fecha_texto), ('Cliente', cab['clientes']),
-        ('A.t', cab['atencion']), ('Ubicación', cab['ubicaciones']), ('Generó', generado_por),
+        ('Dirigido a', cab['atencion']), ('Ubicación', cab['ubicaciones']), ('Emitido por', generado_por),
         ('Responsable técnico', cab['tecnicos']), ('Equipos intervenidos', len(equipos)),
         ('Equipos fuera de norma', sum(1 for e in equipos if e.fuera_de_norma)),
     ]

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static ui %}
 {% block title %}Dashboard{% endblock %}
-{% block head %}<link href="{% static 'css/dashboard.css' %}" rel="stylesheet">{% endblock %}
+{% block head %}<link href="{% static 'css/dashboard.css' %}?v={{ v_estatica }}" rel="stylesheet">{% endblock %}
 {% block content %}
 <section class="hero-dash reveal">
   <img class="hero-marca" src="{% static 'img/mark.png' %}" alt="">
@@ -34,7 +34,7 @@
         <td class="text-nowrap"><a href="{{ c.get_absolute_url }}" class="fw-bold">{{ c.numero }}</a><br><small class="text-body-secondary">{{ c.titulo|truncatechars:36 }}</small></td>
         <td>{{ c.cliente }}<br><small class="text-body-secondary">{{ c.contacto|default:"Sin contacto" }}</small></td>
         <td class="text-nowrap">{% if c.telefono %}<a class="contacto-link" href="tel:{{ c.telefono|tel }}"><i class="bi bi-telephone-fill"></i> {{ c.telefono }}</a>
-          {% if c.telefono|wa %}<a class="ms-2" href="https://wa.me/{{ c.telefono|wa }}" target="_blank" rel="noopener" title="WhatsApp"><i class="bi bi-whatsapp"></i></a>{% endif %}
+          {% if c.telefono|wa %}<a class="ms-2 contacto-wa" href="https://wa.me/{{ c.telefono|wa }}" target="_blank" rel="noopener" title="WhatsApp"><i class="bi bi-whatsapp"></i></a>{% endif %}
           {% else %}<span class="text-body-secondary">—</span>{% endif %}</td>
         <td><strong class="text-danger">{{ c.dias_sin_gestion }} días</strong></td>
         <td class="text-end">{{ c.neto|clp }}</td>
@@ -169,5 +169,5 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="{% static 'js/dashboard.js' %}"></script>
+<script src="{% static 'js/dashboard.js' %}?v={{ v_estatica }}"></script>
 {% endblock %}

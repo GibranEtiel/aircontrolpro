@@ -25,6 +25,7 @@ class OrdenForm(BootstrapModelForm):
         fields = ['numero', 'titulo', 'atencion', 'tipo', 'prioridad', 'estado', 'ubicacion', 'activos',
                   'tecnico', 'fecha_programada', 'descripcion', 'monto_neto', 'costo_materiales',
                   'costo_mano_obra', 'estado_pago', 'fecha_pago']
+        labels = {'atencion': 'Dirigido a (opcional)'} 
         widgets = {
             'activos': ActivosCheckbox,
             'fecha_programada': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
@@ -93,7 +94,7 @@ class InformeNuevoForm(BootstrapFormMixin, forms.Form):
     tipo = forms.ChoiceField(label='Tipo de trabajo', choices=OrdenTrabajo.Tipo.choices,
                              initial=OrdenTrabajo.Tipo.PREVENTIVO)
     titulo = forms.CharField(label='Título (opcional)', max_length=200, required=False)
-    atencion = forms.CharField(label='A.t (opcional)', max_length=120, required=False,
+    atencion = forms.CharField(label='Dirigido a (opcional)', max_length=120, required=False,
                                help_text='Si lo dejas vacío se usa el contacto del cliente.')
 
     def __init__(self, *args, **kwargs):

@@ -333,6 +333,111 @@ class FlujoMantencionTests(TestCase):
         self.assertIn('EQUIPO FUERA DE NORMA', html)
         self.assertNotIn('REFRIGERANTE R-22', html)
 
+    # --- firma del técnico -----------------------------------------------------------------
+
+    def test_el_tecnico_firma_en_el_informe_y_sale_en_la_pantalla_y_en_el_pdf(self):
+        import base64
+
+        buf = BytesIO()
+        Image.new('RGBA', (300, 120), (0, 0, 0, 0)).save(buf, 'PNG')
+        firma = 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode()
+        informe, eq = self._informe_iniciado()
+        html = self.client.get(reverse('informe_editar', args=[informe.pk])).content.decode()
+        self.assertIn('id="firma-tecnico"', html)  # además de la firma del cliente
+        self.client.post(reverse('informe_editar', args=[informe.pk]),
+                         {**self._base(informe), 'firma_tecnico_data': firma, 'accion': 'guardar'})
+        informe.refresh_from_db()
+        self.assertTrue(informe.firma_tecnico)
+        self.assertFalse(informe.firma)  # la del cliente no se tocó
+        self.client.post(reverse('informe_editar', args=[informe.pk]),
+                         {**self._base(informe), 'accion': f'terminar_{eq.pk}'})
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get(reverse('informe_detalle', args=[informe.pk])), 'Firma técnico')
+        pdf = self.client.get(reverse('informe_pdf', args=[informe.pk]))
+        self.assertEqual(pdf.status_code, 200)
+        self.assertTrue(pdf.content.startswith(b'%PDF'))
+        # la imagen se sirve con sesión
+        self.assertEqual(self.client.get(informe.firma_tecnico.url).status_code, 200)
+
+    # --- eliminar un informe creado sin querer -----------------------------------------------
+
+    def test_eliminar_solo_el_informe_borra_fotos_y_archivos_y_deja_la_orden_pendiente(self):
+        informe, eq = self._informe_iniciado()
+        self._foto(informe, eq, 'liquido')
+        ruta = informe.fotos.get().imagen.path
+        r = self.client.get(reverse('informe_eliminar', args=[informe.pk]))
+        self.assertContains(r, 'no se puede deshacer')
+        self.assertNotContains(r, 'y la orden')  # esta orden tiene cobro: no se ofrece borrarla
+        self.assertTrue(Informe.objects.filter(pk=informe.pk).exists())  # mirar la confirmación no borra
+        r = self.client.post(reverse('informe_eliminar', args=[informe.pk]), {'accion': 'con_orden'}, follow=True)
+        self.assertRedirects(r, reverse('informes'))
+        self.assertFalse(Informe.objects.exists() or FotoInforme.objects.exists())
+        self.assertFalse(__import__('os').path.exists(ruta))
+        self.orden.refresh_from_db()  # la orden con cobro se conserva aunque se pida borrarla
+        self.assertEqual(self.orden.estado, OrdenTrabajo.Estado.PENDIENTE)
+        self.assertIsNone(self.orden.fecha_inicio)
+
+    def test_el_tecnico_elimina_un_informe_en_terreno_con_su_orden_creada_sin_querer(self):
+        self.client.force_login(self.tecnico)
+        self.client.post(reverse('informe_nuevo'), {'cliente': self.cli_a.pk, 'ubicacion': self.ub_a.pk,
+                                                    'tipo': 'preventivo', 'titulo': '', 'atencion': ''})
+        informe = Informe.objects.exclude(orden=self.orden).get()
+        self.assertContains(self.client.get(reverse('informes')), reverse('informe_eliminar', args=[informe.pk]))
+        self.assertContains(self.client.get(reverse('informe_eliminar', args=[informe.pk])), 'y la orden')
+        self.client.post(reverse('informe_eliminar', args=[informe.pk]), {'accion': 'con_orden'})
+        self.assertFalse(Informe.objects.exclude(orden=self.orden).exists())
+        self.assertEqual(OrdenTrabajo.objects.count(), 1)  # solo queda la orden del administrador
+
+    def test_quien_puede_eliminar_un_informe(self):
+        informe, eq = self._informe_iniciado()
+        url = reverse('informe_eliminar', args=[informe.pk])
+        self.client.force_login(self.otro_tecnico)  # un técnico ajeno ni siquiera lo ve
+        self.assertEqual(self.client.post(url).status_code, 404)
+        self.client.force_login(self.user_a)  # el cliente no elimina
+        self.assertEqual(self.client.post(url).status_code, 403)
+        self.client.force_login(self.tecnico)  # ya enviado a revisión, el técnico no puede borrarlo
+        Informe.objects.filter(pk=informe.pk).update(estado=Informe.Estado.ENVIADO)
+        self.client.post(url)
+        self.assertTrue(Informe.objects.filter(pk=informe.pk).exists())
+        self.assertNotContains(self.client.get(reverse('informe_detalle', args=[informe.pk])), url)
+        self.client.force_login(self.admin)  # el administrador sí, y le avisa si ya se emitió
+        self.assertContains(self.client.get(reverse('informe_detalle', args=[informe.pk])), url)
+        self.client.post(url)
+        self.assertFalse(Informe.objects.exists())
+
+    # --- cámara o galería, y quitar una foto equivocada --------------------------------------
+
+    def test_cada_casilla_ofrece_camara_y_galeria_y_se_puede_quitar_una_foto_equivocada(self):
+        informe, eq = self._informe_iniciado()
+        html = self.client.get(reverse('informe_editar', args=[informe.pk])).content.decode()
+        # 6 pasos: cada uno con un selector con cámara y otro sin `capture` (galería)
+        camara = html.count('capture="environment" class="js-slot"')
+        galeria = html.count('<input type="file" accept="image/*" class="js-slot"')
+        self.assertEqual((camara, galeria), (6, 6))
+        self.assertIn('Galería', html)
+
+        # Foto equivocada: se quita y el paso vuelve a quedar pendiente
+        foto = self._foto(informe, eq, 'soplador').json()
+        eq = informe.equipos.prefetch_related('fotos').get()
+        self.assertNotIn('Secado con soplador', [p['nombre'] for p in eq.pasos_pendientes])
+        r = self.client.post(foto['eliminar'])
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('Secado con soplador', r.json()['faltan'])
+        self.assertFalse(FotoInforme.objects.filter(pk=foto['id']).exists())
+
+        # Una foto de la galería (cualquier imagen) reemplaza a la anterior del mismo paso
+        self._foto(informe, eq, 'soplador')
+        segunda = self._foto(informe, eq, 'soplador').json()
+        self.assertEqual(list(FotoInforme.objects.filter(equipo=eq, paso='soplador').values_list('pk', flat=True)),
+                         [segunda['id']])
+
+    def test_otro_tecnico_no_puede_quitar_fotos_ajenas(self):
+        informe, eq = self._informe_iniciado()
+        foto = self._foto(informe, eq, 'liquido').json()
+        self.client.force_login(self.otro_tecnico)
+        self.assertEqual(self.client.post(foto['eliminar']).status_code, 404)
+        self.assertTrue(FotoInforme.objects.filter(pk=foto['id']).exists())
+
     def _base(self, informe):
         """Datos mínimos de los equipos del informe, como los enviaría el navegador."""
         datos = {}
@@ -406,7 +511,7 @@ class FlujoMantencionTests(TestCase):
             self.assertEqual(c.get(reverse('informe_nuevo')).status_code, 403)
 
     def test_tecnico_da_de_alta_equipos_en_terreno(self):
-        datos = {'ubicacion': self.ub_a.pk, 'codigo': 'A-77', 'numero_equipo': '077', 'nombre': 'Split nuevo',
+        datos = {'cliente': self.cli_a.pk, 'ubicacion': self.ub_a.pk, 'codigo': 'A-77', 'numero_equipo': '077', 'nombre': 'Split nuevo',
                  'tipo': 'split', 'estado': 'activo', 'condicion': 'buena', 'refrigerante': 'R-22'}
         self.client.force_login(self.tecnico)
         self.assertContains(self.client.get(reverse('activos')), reverse('activo_nuevo'))

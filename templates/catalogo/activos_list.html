@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% load ui %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Catálogo</span><h1>{{ titulo }}</h1>
+    <div class="text-body-secondary small">{{ total }} equipo{{ total|pluralize }}{% if grupos|length > 1 %} en {{ grupos|length }} empresas{% endif %}</div></div>
+  <div class="d-flex gap-2 flex-wrap">
+    <form method="get" class="d-flex gap-2">
+      {% if cliente_id %}<input type="hidden" name="cliente" value="{{ cliente_id }}">{% endif %}
+      <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Buscar equipo…" aria-label="Buscar equipo">
+      <button class="btn btn-sm btn-outline-secondary" aria-label="Buscar"><i class="bi bi-search"></i></button>
+    </form>
+    {% include 'partials/exportar.html' %}
+    {% if nuevo_url %}<a href="{% url nuevo_url %}" class="btn btn-sm btn-info"><i class="bi bi-plus-lg"></i> Nuevo</a>{% endif %}
+  </div>
+</div>
+
+{% if clientes or grupos|length > 1 %}
+<div class="d-flex gap-2 flex-wrap align-items-center mb-3">
+  {% if clientes %}
+  <form method="get" class="d-flex gap-2 flex-grow-1" style="max-width: 26rem">
+    {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+    <select name="cliente" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Filtrar por empresa">
+      <option value="">Todas las empresas</option>
+      {% for c in clientes %}<option value="{{ c.pk }}" {% if c.pk|stringformat:"s" == cliente_id %}selected{% endif %}>{{ c.nombre }}</option>{% endfor %}
+    </select>
+  </form>
+  {% endif %}
+  {% if grupos|length > 1 %}
+  <div class="seg ms-md-auto" role="group" aria-label="Plegar o desplegar">
+    <button type="button" id="abrir-todo"><i class="bi bi-arrows-expand"></i> Abrir todo</button>
+    <button type="button" id="cerrar-todo"><i class="bi bi-arrows-collapse"></i> Cerrar todo</button>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% for g in grupos %}
+<section class="card grupo-empresa">
+  <button class="grupo-cab {% if not abierto %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#emp{{ g.cliente.pk }}"
+          aria-expanded="{% if abierto %}true{% else %}false{% endif %}" aria-controls="emp{{ g.cliente.pk }}">
+    <span class="avatar-emp">{{ g.cliente.nombre|slice:":1"|upper }}</span>
+    <span class="nombre">{{ g.cliente.nombre }}
+      <small>{{ g.sucursales }} sucursal{{ g.sucursales|pluralize:",es" }}{% if g.cliente.contacto %} · {{ g.cliente.contacto }}{% endif %}</small></span>
+    <span class="chips">
+      <span class="badge text-bg-info">{{ g.activos|length }} equipo{{ g.activos|length|pluralize }}</span>
+      {% if g.fuera_norma %}<span class="badge text-bg-danger" title="Refrigerante R-22">{{ g.fuera_norma }} R-22</span>{% endif %}
+      {% if g.por_revisar %}<span class="badge text-bg-warning" title="Condición regular o mala">{{ g.por_revisar }} por revisar</span>{% endif %}
+    </span>
+    <i class="bi bi-chevron-down chevron"></i>
+  </button>
+  <div id="emp{{ g.cliente.pk }}" class="collapse grupo-cuerpo {% if abierto %}show{% endif %}">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 tabla-movil">
+        <thead><tr><th>N°</th><th>Equipo</th><th>Marca / modelo</th><th>Ubicación</th><th>Refrigerante</th><th>Condición</th>{% if editar_url %}<th></th>{% endif %}</tr></thead>
+        <tbody>
+        {% for a in g.activos %}
+          <tr>
+            <td class="fw-bold">{{ a.numero_equipo|default:"—" }}</td>
+            <td>{{ a.nombre }}<br><small class="text-body-secondary">{{ a.codigo }}</small></td>
+            <td>{{ a.marca_modelo }}</td>
+            <td>{{ a.ubicacion_exacta|default:"—" }}<br><small class="text-body-secondary">{{ a.ubicacion.nombre }}</small></td>
+            <td>{{ a.refrigerante|default:"—" }}{% if a.fuera_de_norma %} <span class="badge text-bg-danger">R-22</span>{% endif %}</td>
+            <td><span class="badge text-bg-{{ a.condicion|badge }}">{{ a.get_condicion_display }}</span>{% if a.estado != 'activo' %} <span class="badge text-bg-secondary">{{ a.get_estado_display }}</span>{% endif %}</td>
+            {% if editar_url %}<td class="text-end"><a href="{% url editar_url a.pk %}" class="btn btn-sm btn-outline-secondary" aria-label="Editar {{ a.codigo }}"><i class="bi bi-pencil"></i></a></td>{% endif %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% empty %}
+<div class="card"><div class="card-body text-center text-body-secondary py-5">
+  <i class="bi bi-fan fs-1"></i><p class="mb-0 mt-2">{% if q or cliente_id %}No hay equipos con esos filtros.{% else %}Aún no hay equipos registrados.{% endif %}</p></div></div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Abrir o cerrar todas las empresas de una vez.
+(function () {
+  function cambiar(abrir) {
+    document.querySelectorAll('.grupo-cuerpo').forEach(function (c) {
+      bootstrap.Collapse.getOrCreateInstance(c, {toggle: false})[abrir ? 'show' : 'hide']();
+    });
+  }
+  var a = document.getElementById('abrir-todo'), b = document.getElementById('cerrar-todo');
+  if (a) a.addEventListener('click', function () { cambiar(true); });
+  if (b) b.addEventListener('click', function () { cambiar(false); });
+})();
+</script>
+{% endblock %}

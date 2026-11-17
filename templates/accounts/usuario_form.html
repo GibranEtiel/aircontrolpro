@@ -1,0 +1,39 @@
+{% extends 'generic/form.html' %}
+{% block scripts %}
+<script>
+// La empresa solo se pide a los usuarios con rol Cliente; si la empresa es nueva se escribe su nombre aquí mismo.
+(function () {
+  var rol = document.getElementById('id_rol'), cliente = document.getElementById('id_cliente'),
+      nueva = document.getElementById('id_empresa_nueva');
+  if (!rol || !cliente || !nueva) return;
+  var envoltura = function (el) { return el.closest('[class*="col-"]'); };
+  var cajaCliente = envoltura(cliente), cajaNueva = envoltura(nueva);
+
+  var enlace = document.createElement('button');
+  enlace.type = 'button';
+  enlace.className = 'btn btn-link btn-sm p-0 mt-1 fw-bold';
+  cajaCliente.appendChild(enlace);
+
+  var modoNueva = nueva.value.trim() !== '' || cajaNueva.querySelector('.text-danger') !== null;
+
+  function pintar() {
+    var esCliente = rol.value === 'cliente';
+    cajaCliente.hidden = !esCliente;
+    cajaNueva.hidden = !(esCliente && modoNueva);
+    enlace.hidden = !esCliente;
+    cliente.disabled = modoNueva;
+    if (modoNueva) cliente.value = '';
+    enlace.textContent = modoNueva ? 'Elegir una empresa que ya existe' : '¿La empresa es nueva? Créala aquí';
+    if (!esCliente) { cliente.value = ''; nueva.value = ''; }
+  }
+  enlace.addEventListener('click', function () {
+    modoNueva = !modoNueva;
+    if (!modoNueva) nueva.value = '';
+    pintar();
+    (modoNueva ? nueva : cliente).focus();
+  });
+  rol.addEventListener('change', pintar);
+  pintar();
+})();
+</script>
+{% endblock %}

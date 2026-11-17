@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static ui %}
 {% block title %}Cotizaciones{% endblock %}
-{% block head %}{% if vista == 'tablero' %}<link href="{% static 'css/tablero.css' %}" rel="stylesheet">{% endif %}{% endblock %}
+{% block head %}{% if vista == 'tablero' %}<link href="{% static 'css/tablero.css' %}?v={{ v_estatica }}" rel="stylesheet">{% endif %}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div><span class="eyebrow">Seguimiento comercial</span><h1>Cotizaciones</h1></div>
@@ -102,4 +102,4 @@
 {% endif %}
 {% endblock %}
 
-{% block scripts %}{% if vista == 'tablero' %}<script src="{% static 'js/tablero.js' %}"></script>{% endif %}{% endblock %}
+{% block scripts %}{% if vista == 'tablero' %}<script src="{% static 'js/tablero.js' %}?v={{ v_estatica }}"></script>{% endif %}{% endblock %}

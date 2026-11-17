@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Eliminar informe {{ informe.numero }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><span class="eyebrow">Eliminar</span><h1>¿Eliminar el informe {{ informe.numero }}?</h1></div></div>
+<div class="card" style="max-width: 620px"><div class="card-body p-4">
+  <p class="fs-5 fw-bold mb-1"><i class="bi bi-trash text-danger"></i> {{ informe.numero }}
+    <span class="badge text-bg-secondary fs-6 align-middle">{{ informe.get_estado_display }}</span></p>
+  <p class="text-body-secondary mb-3">Orden {{ orden.numero }} · {{ orden.titulo }}<br>{{ orden.cliente }} · {{ orden.ubicacion.nombre }}</p>
+
+  <div class="alert alert-danger">
+    <strong>Esta acción no se puede deshacer.</strong>
+    <div class="mt-1">Se borrará el informe con sus <strong>{{ n_equipos }} equipo{{ n_equipos|pluralize }}</strong>,
+      sus <strong>{{ n_fotos }} foto{{ n_fotos|pluralize }}</strong> y las firmas.</div>
+    {% if informe.estado == 'emitido' %}<div class="mt-1"><i class="bi bi-exclamation-triangle"></i> Este informe ya fue <strong>emitido al cliente</strong>: dejará de verlo.</div>{% endif %}
+  </div>
+
+  <form method="post" class="d-grid gap-2">{% csrf_token %}
+    <button name="accion" value="solo_informe" class="btn btn-danger"><i class="bi bi-trash"></i> Eliminar solo el informe</button>
+    <div class="small text-body-secondary mb-2">La orden {{ orden.numero }} se conserva y vuelve a «Pendiente», para empezar el informe de nuevo.</div>
+    {% if con_orden_posible %}
+    <button name="accion" value="con_orden" class="btn btn-outline-danger"><i class="bi bi-trash"></i> Eliminar el informe y la orden {{ orden.numero }}</button>
+    <div class="small text-body-secondary mb-2">Úsalo si la orden también se creó sin querer.</div>
+    {% endif %}
+    <a href="{{ volver }}" class="btn btn-outline-secondary">Cancelar</a>
+  </form>
+</div></div>
+{% endblock %}

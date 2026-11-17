@@ -5,6 +5,7 @@ from datetime import date
 
 from django.contrib import messages
 from django.core.files.base import ContentFile
+from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -39,6 +40,41 @@ def _puede_editar(user, informe):
         return True
     return (user.es_tecnico and informe.tecnico_id == user.pk
             and informe.estado in (Informe.Estado.BORRADOR, Informe.Estado.ENVIADO))
+
+
+def _puede_eliminar(user, informe):
+    """El administrador elimina cualquier informe; el técnico, solo uno suyo que aún es borrador (el que abrió sin querer)."""
+    if user.es_admin:
+        return True
+    return user.es_tecnico and informe.tecnico_id == user.pk and informe.estado == Informe.Estado.BORRADOR
+
+
+def _orden_se_puede_eliminar(user, informe):
+    """¿Se ofrece borrar también la orden de trabajo? Solo si no tiene cotización, cobro ni otro respaldo: por ejemplo la
+    orden que el técnico creó al abrir un informe en terreno. El técnico solo borra las que él mismo creó."""
+    orden = informe.orden
+    if hasattr(orden, 'cotizacion') or orden.monto_neto or orden.costo_total:
+        return False
+    return user.es_admin or orden.creada_por_id == user.pk
+
+
+def _borrar_informe(informe, con_orden):
+    """Elimina el informe con sus equipos y fotos (también los archivos). Sin la orden, esta vuelve a «Pendiente» para
+    poder empezar de nuevo."""
+    orden = informe.orden
+    archivos = [f.imagen for f in informe.fotos.all()] + [a for a in (informe.firma, informe.firma_tecnico) if a]
+    with transaction.atomic():
+        informe.delete()
+        if con_orden:
+            orden.delete()
+        else:
+            orden.estado, orden.fecha_inicio, orden.fecha_termino = OrdenTrabajo.Estado.PENDIENTE, None, None
+            orden.save(update_fields=['estado', 'fecha_inicio', 'fecha_termino'])
+    for archivo in archivos:  # al final, ya borrado de la base: un archivo suelto no molesta, uno faltante sí
+        try:
+            archivo.delete(save=False)
+        except OSError:
+            pass
 
 
 # --- Órdenes de trabajo ---------------------------------------------------
@@ -221,6 +257,8 @@ def informe_lista(request):
         qs = qs.filter(estado=estado)
 
     informes = sorted(qs, key=lambda i: i.fecha_referencia, reverse=True)
+    for i in informes:
+        i.puede_eliminar = _puede_eliminar(request.user, i)
     meses = OrderedDict()
     for inf in informes:
         ref = timezone.localtime(inf.fecha_referencia)
@@ -252,10 +290,9 @@ def _exportar_informes(user, meses, formato):
 
 
 def _quien_genero(user, informe=None):
-    """Nombre que va en 'GENERÓ': quien emitió el informe o, si no, quien lo descarga."""
-    if informe is not None and informe.emitido_por_id:
-        return informe.emitido_por.nombre
-    return EMPRESA if user.es_cliente else user.nombre
+    """Quien figura como 'EMITIDO POR' en el informe: siempre la empresa. Así el documento se ve igual para el
+    cliente, sin importar quién lo descargue; el técnico aparece como responsable y firma abajo."""
+    return EMPRESA
 
 
 @rol_required(ADMIN, TECNICO, CLIENTE)
@@ -358,9 +395,10 @@ def informe_detalle(request, pk):
     informe = get_object_or_404(informes_visibles(request.user), pk=pk)
     equipos = informe.equipos.select_related('activo').prefetch_related('fotos')
     return render(request, 'mantenciones/informe_detalle.html', {
-        'informe': informe, 'orden': informe.orden, 'equipos': equipos,
+        'informe': informe, 'orden': informe.orden, 'equipos': equipos, 'empresa_nombre': EMPRESA,
         'fotos_generales': informe.fotos.filter(equipo__isnull=True),
         'puede_editar': _puede_editar(request.user, informe),
+        'puede_eliminar': _puede_eliminar(request.user, informe),
         'puede_emitir': request.user.es_admin and informe.estado == Informe.Estado.ENVIADO,
     })
 
@@ -386,6 +424,7 @@ def informe_editar(request, pk):
                 eq.tareas = f.cleaned_data['tareas']
                 eq.save()
             _guardar_firma(informe, request.POST.get('firma_data', ''))
+            _guardar_firma(informe, request.POST.get('firma_tecnico_data', ''), 'firma_tecnico')
             accion = request.POST.get('accion', 'guardar')
             if accion == 'enviar' and informe.estado == Informe.Estado.BORRADOR:
                 return _enviar_informe(request, informe)
@@ -418,8 +457,33 @@ def informe_editar(request, pk):
         'nuevo_form': EquipoNuevoForm(prefix='nuevo', ubicaciones=ubicaciones,
                                       initial={'ubicacion': orden.ubicacion_id}),
         'es_borrador': informe.estado == Informe.Estado.BORRADOR,
+        'puede_eliminar': _puede_eliminar(request.user, informe),
         'hay_terminados': any(e.finalizado for e in equipos),
         'faltan_fotos': [e for e in equipos if e.finalizado and e.pasos_pendientes],
+    })
+
+
+@rol_required(ADMIN, TECNICO)
+def informe_eliminar(request, pk):
+    """Confirma y elimina un informe (p. ej. uno creado sin querer)."""
+    informe = get_object_or_404(informes_visibles(request.user), pk=pk)
+    if not _puede_eliminar(request.user, informe):
+        messages.error(request, 'No puedes eliminar este informe.')
+        return redirect('informe_detalle', pk=informe.pk)
+    orden = informe.orden
+    con_orden_posible = _orden_se_puede_eliminar(request.user, informe)
+    if request.method == 'POST':
+        con_orden = con_orden_posible and request.POST.get('accion') == 'con_orden'
+        numero, numero_ot = informe.numero, orden.numero
+        _borrar_informe(informe, con_orden)
+        messages.success(request, f'Informe {numero} eliminado' + (f' junto con la orden {numero_ot}.' if con_orden else
+                         f'. La orden {numero_ot} quedó pendiente para empezar de nuevo.'))
+        return redirect('informes')
+    return render(request, 'mantenciones/informe_eliminar.html', {
+        'informe': informe, 'orden': orden, 'con_orden_posible': con_orden_posible,
+        'n_equipos': informe.equipos.count(), 'n_fotos': informe.fotos.count(),
+        'volver': reverse('informe_editar' if _puede_editar(request.user, informe) else 'informe_detalle',
+                          args=[informe.pk]),
     })
 
 
@@ -484,14 +548,16 @@ def _quitar_equipo(request, informe, equipo_pk):
     return redirect('informe_editar', pk=informe.pk)
 
 
-def _guardar_firma(informe, data_url):
+def _guardar_firma(informe, data_url, campo='firma'):
+    """Guarda una firma dibujada en el celular. `campo` es 'firma' (cliente) o 'firma_tecnico'."""
     if not data_url.startswith('data:image/png;base64,'):
         return
     try:
         contenido = base64.b64decode(data_url.split(',', 1)[1])
     except (binascii.Error, ValueError):
         return
-    informe.firma.save(f'{informe.numero}.png', ContentFile(contenido), save=True)
+    sufijo = '-tecnico' if campo == 'firma_tecnico' else ''
+    getattr(informe, campo).save(f'{informe.numero}{sufijo}.png', ContentFile(contenido), save=True)
 
 
 def _terminar_equipo(request, informe, equipo_pk):

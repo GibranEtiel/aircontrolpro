@@ -289,7 +289,8 @@ def media_protegida(request, path):
     if not user.es_admin:
         visibles = informes_visibles(user).values('pk')
         permitido = (FotoInforme.objects.filter(imagen=path, informe__in=visibles).exists()
-                     or Informe.objects.filter(firma=path, pk__in=visibles).exists())
+                     or Informe.objects.filter(firma=path, pk__in=visibles).exists()
+                     or Informe.objects.filter(firma_tecnico=path, pk__in=visibles).exists())
         if not permitido:
             raise Http404
     respuesta = serve(request, path, document_root=settings.MEDIA_ROOT)

@@ -5,8 +5,8 @@ from .models import Activo, Cliente, Ubicacion
 
 @admin.register(Cliente)
 class ClienteAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'rut', 'contacto', 'activo')
-    search_fields = ('nombre', 'rut')
+    list_display = ('nombre', 'contacto', 'activo')
+    search_fields = ('nombre',)
 
 
 @admin.register(Ubicacion)

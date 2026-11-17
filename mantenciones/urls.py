@@ -18,6 +18,7 @@ urlpatterns = [
     path('informes/<int:pk>/excel/', views.informe_excel, name='informe_excel'),
     path('informes/<int:pk>/editar/', views.informe_editar, name='informe_editar'),
     path('informes/<int:pk>/foto/', views.foto_subir, name='foto_subir'),
+    path('informes/<int:pk>/eliminar/', views.informe_eliminar, name='informe_eliminar'),
     path('informes/<int:pk>/emitir/', views.informe_emitir, name='informe_emitir'),
     path('informes/<int:pk>/devolver/', views.informe_devolver, name='informe_devolver'),
     path('fotos/<int:pk>/eliminar/', views.foto_eliminar, name='foto_eliminar'),

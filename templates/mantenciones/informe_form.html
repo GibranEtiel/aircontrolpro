@@ -10,11 +10,13 @@
   </div>
   <div class="d-flex gap-2 flex-wrap align-items-center">
     {% if hay_terminados %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'informe_pdf' informe.pk %}"><i class="bi bi-file-earmark-pdf"></i> Informe general (PDF)</a>{% endif %}
+    {% if puede_eliminar %}<a class="btn btn-sm btn-outline-danger" href="{% url 'informe_eliminar' informe.pk %}"><i class="bi bi-trash"></i> Eliminar informe</a>{% endif %}
   </div>
 </div>
 
 <form method="post" id="informe-form" novalidate data-foto-url="{% url 'foto_subir' informe.pk %}">{% csrf_token %}
   <input type="hidden" name="firma_data" id="firma_data">
+  <input type="hidden" name="firma_tecnico_data" id="firma_tecnico_data">
   {# Enter dentro de un campo guarda; sin esto dispararía el primer botón (Terminar equipo) #}
   <button name="accion" value="guardar" hidden tabindex="-1" aria-hidden="true"></button>
 
@@ -91,7 +93,9 @@
                 <div class="slot-acciones">
                   <label class="btn btn-sm {% if p.foto %}btn-outline-secondary{% else %}btn-info{% endif %} mb-0 slot-btn"><i class="bi bi-camera"></i> <span>{% if p.foto %}Retomar{% else %}Tomar foto{% endif %}</span>
                     <input type="file" accept="image/*" capture="environment" class="js-slot" data-equipo="{{ eq.pk }}" data-paso="{{ p.clave }}" hidden></label>
-                  <button type="button" class="btn btn-sm btn-outline-secondary slot-quitar" {% if p.foto %}data-url="{% url 'foto_eliminar' p.foto.pk %}"{% else %}hidden{% endif %} aria-label="Quitar foto de {{ p.nombre }}"><i class="bi bi-trash"></i></button>
+                  <label class="btn btn-sm btn-outline-secondary mb-0 slot-galeria" title="Elegir una foto de la galería"><i class="bi bi-images"></i> Galería
+                    <input type="file" accept="image/*" class="js-slot" data-equipo="{{ eq.pk }}" data-paso="{{ p.clave }}" hidden></label>
+                  <button type="button" class="btn btn-sm btn-outline-danger slot-quitar" {% if p.foto %}data-url="{% url 'foto_eliminar' p.foto.pk %}"{% else %}hidden{% endif %} aria-label="Quitar la foto de {{ p.nombre }}"><i class="bi bi-trash"></i> Quitar</button>
                 </div>
               </div>
             </div>
@@ -101,8 +105,11 @@
         <div class="col-12 js-bloque-fotos">
           <label class="form-label">Otras fotos <span class="text-body-secondary small">(opcional: detalles, daños, repuestos…)</span></label>
           <div class="mb-2">
-            <label class="btn btn-sm btn-outline-secondary mb-0"><i class="bi bi-plus-lg"></i> Agregar otra foto
+            <label class="btn btn-sm btn-outline-secondary mb-0"><i class="bi bi-camera"></i> Cámara
               <input type="file" accept="image/*" capture="environment" class="js-foto" data-equipo="{{ eq.pk }}" hidden multiple>
+            </label>
+            <label class="btn btn-sm btn-outline-secondary mb-0"><i class="bi bi-images"></i> Galería
+              <input type="file" accept="image/*" class="js-foto" data-equipo="{{ eq.pk }}" hidden multiple>
             </label>
           </div>
           <div class="foto-grid js-fotos">
@@ -169,8 +176,10 @@
       <select class="form-select form-select-sm js-etapa" style="max-width:140px">
         {% for v, l in etapas %}<option value="{{ v }}" {% if v == 'otro' %}selected{% endif %}>{{ l }}</option>{% endfor %}
       </select>
-      <label class="btn btn-sm btn-outline-info mb-0"><i class="bi bi-camera"></i> Tomar / subir foto
+      <label class="btn btn-sm btn-outline-info mb-0"><i class="bi bi-camera"></i> Cámara
         <input type="file" accept="image/*" capture="environment" class="js-foto" data-equipo="" hidden multiple></label>
+      <label class="btn btn-sm btn-outline-info mb-0"><i class="bi bi-images"></i> Galería
+        <input type="file" accept="image/*" class="js-foto" data-equipo="" hidden multiple></label>
     </div>
     <div class="foto-grid js-fotos">
       {% for foto in fotos_generales %}
@@ -190,10 +199,19 @@
   <div class="card mb-3"><div class="card-header">Recepción del cliente</div><div class="card-body"><div class="row g-3">
     <div class="col-md-6"><label class="form-label">{{ form.recibido_por.label }}</label>{{ form.recibido_por }}</div>
     <div class="col-12">
-      <label class="form-label">Firma</label>
+      <label class="form-label">Firma del cliente</label>
       <canvas id="firma" class="firma-canvas"></canvas>
       <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="firma-limpiar">Limpiar firma</button>
       {% if informe.firma %}<span class="small text-body-secondary ms-2">Ya hay una firma guardada; dibuja otra solo si quieres reemplazarla.</span>{% endif %}
+    </div>
+  </div></div></div>
+
+  <div class="card mb-3"><div class="card-header">Firma del técnico</div><div class="card-body"><div class="row g-3">
+    <div class="col-12">
+      <label class="form-label">Firma de {{ informe.tecnico|default:"el técnico" }}</label>
+      <canvas id="firma-tecnico" class="firma-canvas"></canvas>
+      <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="firma-tecnico-limpiar">Limpiar firma</button>
+      {% if informe.firma_tecnico %}<span class="small text-body-secondary ms-2">Ya hay una firma guardada; dibuja otra solo si quieres reemplazarla.</span>{% endif %}
     </div>
   </div></div></div>
 
@@ -209,4 +227,4 @@
 </form>
 {% endblock %}
 
-{% block scripts %}<script src="{% static 'js/informe.js' %}"></script>{% endblock %}
+{% block scripts %}<script src="{% static 'js/informe.js' %}?v={{ v_estatica }}"></script>{% endblock %}

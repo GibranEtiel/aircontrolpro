@@ -128,37 +128,44 @@
   });
 
   // --- Firma -------------------------------------------------------------
-  var canvas = document.getElementById('firma');
-  var ctx = canvas.getContext('2d');
-  var dibujando = false, firmado = false;
+  // Un lienzo para firmar con el dedo; se usa dos veces: firma del cliente y firma del técnico.
+  function lienzoFirma(idCanvas, idLimpiar, idCampo) {
+    var canvas = document.getElementById(idCanvas);
+    if (!canvas) return {guardar: function () {}};
+    var ctx = canvas.getContext('2d');
+    var dibujando = false, firmado = false;
 
-  function ajustarCanvas() {
-    var r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-    canvas.width = r.width * dpr;
-    canvas.height = r.height * dpr;
-    ctx.scale(dpr, dpr);
-    ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
-    firmado = false;
+    function ajustarCanvas() {
+      var r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+      canvas.width = r.width * dpr;
+      canvas.height = r.height * dpr;
+      ctx.scale(dpr, dpr);
+      ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
+      firmado = false;
+    }
+    function punto(ev) {
+      var r = canvas.getBoundingClientRect();
+      return {x: ev.clientX - r.left, y: ev.clientY - r.top};
+    }
+    canvas.addEventListener('pointerdown', function (ev) {
+      dibujando = true; canvas.setPointerCapture(ev.pointerId);
+      var p = punto(ev); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+    });
+    canvas.addEventListener('pointermove', function (ev) {
+      if (!dibujando) return;
+      var p = punto(ev); ctx.lineTo(p.x, p.y); ctx.stroke(); firmado = true;
+    });
+    ['pointerup', 'pointercancel'].forEach(function (t) {
+      canvas.addEventListener(t, function () { dibujando = false; });
+    });
+    document.getElementById(idLimpiar).addEventListener('click', function () {
+      ctx.clearRect(0, 0, canvas.width, canvas.height); firmado = false;
+    });
+    ajustarCanvas();
+    return {guardar: function () { if (firmado) document.getElementById(idCampo).value = canvas.toDataURL('image/png'); }};
   }
-  function punto(ev) {
-    var r = canvas.getBoundingClientRect();
-    return {x: ev.clientX - r.left, y: ev.clientY - r.top};
-  }
-  canvas.addEventListener('pointerdown', function (ev) {
-    dibujando = true; canvas.setPointerCapture(ev.pointerId);
-    var p = punto(ev); ctx.beginPath(); ctx.moveTo(p.x, p.y);
-  });
-  canvas.addEventListener('pointermove', function (ev) {
-    if (!dibujando) return;
-    var p = punto(ev); ctx.lineTo(p.x, p.y); ctx.stroke(); firmado = true;
-  });
-  ['pointerup', 'pointercancel'].forEach(function (t) {
-    canvas.addEventListener(t, function () { dibujando = false; });
-  });
-  document.getElementById('firma-limpiar').addEventListener('click', function () {
-    ctx.clearRect(0, 0, canvas.width, canvas.height); firmado = false;
-  });
-  ajustarCanvas();
+  var firmaCliente = lienzoFirma('firma', 'firma-limpiar', 'firma_data');
+  var firmaTecnico = lienzoFirma('firma-tecnico', 'firma-tecnico-limpiar', 'firma_tecnico_data');
 
   // --- Agregar equipos -----------------------------------------------------
   var buscador = document.getElementById('buscar-equipo');
@@ -178,7 +185,8 @@
         !confirm('¿Quitar este equipo del informe? Se borrarán también sus fotos.')) {
       ev.preventDefault(); return;
     }
-    if (firmado) document.getElementById('firma_data').value = canvas.toDataURL('image/png');
+    firmaCliente.guardar();
+    firmaTecnico.guardar();
     var accion = ev.submitter ? ev.submitter.value : '';
     if (accion.indexOf('terminar_') === 0) {
       var tarjeta = ev.submitter.closest('.equipo-card');

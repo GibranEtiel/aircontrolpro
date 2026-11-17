@@ -18,9 +18,10 @@
         </div>
       {% endfor %}
     </div>
-    <div class="mt-4 d-flex gap-2">
+    <div class="mt-4 d-flex gap-2 flex-wrap align-items-center">
       <button class="btn btn-info">Guardar</button>
       {% if volver %}<a href="{{ volver }}" class="btn btn-outline-secondary">Cancelar</a>{% endif %}
+      {% if eliminar_url %}<a href="{{ eliminar_url }}" class="btn btn-outline-danger ms-auto"><i class="bi bi-trash"></i> Eliminar</a>{% endif %}
     </div>
   </form>
 </div></div>

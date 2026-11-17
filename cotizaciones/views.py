@@ -175,9 +175,9 @@ def cotizacion_pdf(request, pk):
         ('TEXTCOLOR', (0, -1), (-1, -1), AZUL), ('TOPPADDING', (0, 0), (-1, -1), 2),
     ]))
 
-    datos_cliente = [f'Cliente: {cot.cliente.nombre}' + (f' · RUT {cot.cliente.rut}' if cot.cliente.rut else '')]
+    datos_cliente = [f'Cliente: {cot.cliente.nombre}']
     if cot.contacto:
-        datos_cliente.append(f'A.t: {cot.contacto}')
+        datos_cliente.append(f'Dirigido a: {cot.contacto}')
     if cot.ubicacion:
         datos_cliente.append(f'Sucursal: {cot.ubicacion.nombre}')
     datos_cliente.append(f'Fecha: {cot.fecha:%d/%m/%Y} · Válida hasta el {cot.vence:%d/%m/%Y}')

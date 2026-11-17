@@ -2,8 +2,7 @@ from django.db import models
 
 
 class Cliente(models.Model):
-    nombre = models.CharField('Razón social / nombre', max_length=150)
-    rut = models.CharField('RUT', max_length=20, blank=True)
+    nombre = models.CharField('Nombre de la empresa', max_length=150)
     giro = models.CharField(max_length=120, blank=True)
     contacto = models.CharField('Contacto', max_length=120, blank=True)
     email = models.EmailField(blank=True)

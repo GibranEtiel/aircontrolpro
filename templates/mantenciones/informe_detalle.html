@@ -8,6 +8,7 @@
   <div class="d-flex gap-2 flex-wrap">
     <a href="{{ orden.get_absolute_url }}" class="btn btn-outline-secondary">Orden {{ orden.numero }}</a>
     {% if puede_editar %}<a href="{% url 'informe_editar' informe.pk %}" class="btn btn-outline-secondary"><i class="bi bi-pencil"></i> Editar</a>{% endif %}
+    {% if puede_eliminar %}<a href="{% url 'informe_eliminar' informe.pk %}" class="btn btn-outline-danger"><i class="bi bi-trash"></i> Eliminar</a>{% endif %}
     {% if puede_emitir %}
       <form method="post" action="{% url 'informe_devolver' informe.pk %}">{% csrf_token %}<button class="btn btn-outline-warning">Devolver al técnico</button></form>
       <form method="post" action="{% url 'informe_emitir' informe.pk %}">{% csrf_token %}<button class="btn btn-success"><i class="bi bi-send-check"></i> Aprobar y emitir al cliente</button></form>
@@ -28,16 +29,16 @@
     <img src="{% static 'img/logo.png' %}" alt="Air Control Pro Climatización" style="height:70px">
     <div class="small">N° DE OTS: {{ orden.numero }}</div>
   </div>
-  <div class="text-center fs-5 mb-3" style="font-weight:300">AIRCONTROLPRO CLIMATIZACION</div>
+  <div class="text-center fs-5 mb-3" style="font-weight:300">AIRCONTROLPRO CLIMATIZACIÓN</div>
   <div class="border p-2 mb-3 small d-flex justify-content-between flex-wrap gap-2" style="min-height:3.2rem">
-    <span><strong>GENERO</strong>: {% if informe.emitido_por %}{{ informe.emitido_por }}{% else %}—{% endif %}</span>
-    <span><strong>RESPONSABLE TECNICO</strong>: {{ informe.tecnico|default:"—" }}</span>
+    <span><strong>EMITIDO POR</strong>: {{ empresa_nombre }}</span>
+    <span><strong>RESPONSABLE TÉCNICO</strong>: {{ informe.tecnico|default:"—" }}</span>
   </div>
   <h2 class="h6 text-center fw-bold my-4">INFORME TÉCNICO DE MANTENIMIENTO DE AIRE ACONDICIONADO</h2>
   <div class="mb-4">
     <div>Fecha: {{ informe.inicio|date:"j \d\e F \d\e Y"|upper }}</div>
     <div>Cliente: {{ orden.cliente }}</div>
-    <div>A.t: {{ orden.atencion|default:orden.cliente.contacto|default:"—" }}</div>
+    <div>Dirigido a:{{ orden.atencion|default:orden.cliente.contacto|default:"—" }}</div>
     <div>Ubicación: {{ orden.ubicacion.nombre }}</div>
   </div>
 
@@ -49,8 +50,8 @@
 
   {% for eq in equipos %}
   <section class="equipo-bloque border-top pt-3 mt-3">
-    <div class="d-flex justify-content-between align-items-center">
-      <h3 class="h5 fw-bold mb-2">{{ eq.activo.etiqueta }}</h3>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+      <h3 class="h5 fw-bold mb-0">{{ eq.activo.etiqueta }}</h3>
       {% if eq.finalizado %}<a class="no-print btn btn-sm btn-outline-danger" href="{% url 'equipo_pdf' eq.pk %}"><i class="bi bi-file-earmark-pdf"></i> Informe del equipo (PDF)</a>
       {% else %}<span class="no-print badge text-bg-warning">Sin terminar</span>{% endif %}
     </div>
@@ -99,7 +100,7 @@
       <div class="border-top pt-1 small">Recibe conforme{% if informe.recibido_por %}: {{ informe.recibido_por }}{% endif %}</div>
     </div>
     <div class="col-6 text-center">
-      <div style="height:90px"></div>
+      <div style="height:90px" class="d-flex align-items-end justify-content-center">{% if informe.firma_tecnico %}<img src="{{ informe.firma_tecnico.url }}" alt="Firma técnico" style="max-height:90px">{% endif %}</div>
       <div class="border-top pt-1 small">Técnico: {{ informe.tecnico|default:"—" }}</div>
     </div>
   </div>

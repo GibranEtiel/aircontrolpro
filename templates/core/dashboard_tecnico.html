@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static ui %}
 {% block title %}Mi jornada{% endblock %}
-{% block head %}<link href="{% static 'css/dashboard.css' %}" rel="stylesheet">{% endblock %}
+{% block head %}<link href="{% static 'css/dashboard.css' %}?v={{ v_estatica }}" rel="stylesheet">{% endblock %}
 {% block content %}
 <section class="hero-dash reveal">
   <img class="hero-marca" src="{% static 'img/mark.png' %}" alt="">

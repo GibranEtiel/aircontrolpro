@@ -38,7 +38,8 @@
             <td>{{ i.orden.ubicacion.nombre }}</td>
             <td>{{ i.fecha_referencia|date:"d/m/Y" }}</td>
             {% if not user.es_cliente %}<td><span class="badge text-bg-{{ i.estado|badge }}">{{ i.get_estado_display }}</span></td>{% endif %}
-            <td class="text-end"><a href="{% url 'informe_detalle' i.pk %}" class="btn btn-sm btn-outline-info">Ver</a></td>
+            <td class="text-end text-nowrap"><a href="{% url 'informe_detalle' i.pk %}" class="btn btn-sm btn-outline-info">Ver</a>
+              {% if i.puede_eliminar %}<a href="{% url 'informe_eliminar' i.pk %}" class="btn btn-sm btn-outline-danger" title="Eliminar" aria-label="Eliminar informe {{ i.numero }}"><i class="bi bi-trash"></i></a>{% endif %}</td>
           </tr>
         {% endfor %}
         </tbody>
